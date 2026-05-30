@@ -101,7 +101,7 @@ func (c *itemCache) save(path string) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, data, 0644)
+	return os.WriteFile(path, data, 0600)
 }
 
 // SyncConfig holds the parameters for a sync operation.
@@ -665,6 +665,8 @@ func providerIDStrings(items []mdbItem) []string {
 }
 
 // parseProviderID reverses providerIDStrings: "imdb:tt12345" → {"imdb": "tt12345"}.
+// Numeric providers (tmdb, tvdb) are returned as float64 so MDBList
+// receives a JSON number, not a quoted string.
 func parseProviderID(s string) map[string]any {
 	idx := strings.Index(s, ":")
 	if idx < 0 {
@@ -672,9 +674,13 @@ func parseProviderID(s string) map[string]any {
 	}
 	key := s[:idx]
 	val := s[idx+1:]
-	// Try number first (TMDB, TVDB IDs)
-	if n, err := fmt.Sscanf(val, "%f", new(float64)); err == nil && n == 1 {
-		// Keep as string — MDBList accepts both string and numeric
+	switch key {
+	case "tmdb", "tvdb":
+		var num float64
+		if _, err := fmt.Sscanf(val, "%f", &num); err == nil {
+			return map[string]any{key: num}
+		}
+		// fallback: return as string if parse fails
 	}
 	return map[string]any{key: val}
 }

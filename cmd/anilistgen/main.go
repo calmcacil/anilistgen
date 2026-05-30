@@ -54,6 +54,7 @@ func run() error {
 		outputDir  string
 		verbose    bool
 		help       bool
+		showVer    bool
 	)
 
 	flags := flag.NewFlagSet("anilistgen", flag.ContinueOnError)
@@ -66,6 +67,8 @@ func run() error {
 	flags.BoolVar(&verbose, "verbose", false, "verbose logging")
 	flags.BoolVar(&help, "h", false, "print help")
 	flags.BoolVar(&help, "help", false, "print help")
+	flags.BoolVar(&showVer, "version", false, "print version and exit")
+	flags.BoolVar(&showVer, "V", false, "print version and exit (shorthand)")
 
 	// Parse until we hit a subcommand or end
 	if err := flags.Parse(os.Args[1:]); err != nil {
@@ -78,6 +81,11 @@ func run() error {
 
 	if help {
 		printUsage()
+		return nil
+	}
+
+	if showVer {
+		fmt.Println(version)
 		return nil
 	}
 
@@ -151,14 +159,6 @@ func runOneshot(configPath string, dryRun bool, outputDir string, verbose bool) 
 	if err := setupLogging(cfg, verbose); err != nil {
 		return err
 	}
-
-	// If output dir is set, use it
-	if outputDir != "" {
-		// Override config
-	}
-	// If dry-run is set from CLI, it overrides
-	// Actually, the CLI flags should override config but wait — config doesn't have
-	// dry-run or output-dir, those are CLI-only per spec.
 
 	apiKey := resolveAPIKey(cfg)
 

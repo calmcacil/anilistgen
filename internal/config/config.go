@@ -563,7 +563,7 @@ state_file: /tmp/anilistgen.lastrun
 		return fmt.Errorf("create config directory %s: %w", dir, err)
 	}
 
-	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+	if err := os.WriteFile(path, []byte(content), 0600); err != nil {
 		return fmt.Errorf("write config to %s: %w", path, err)
 	}
 
