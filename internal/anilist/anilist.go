@@ -12,23 +12,11 @@ import (
 )
 
 const (
-	apiBase         = "https://graphql.anilist.co"
-	maxRetry        = 3
-	rateLimitDelay  = 500 * time.Millisecond
+	apiBase           = "https://graphql.anilist.co"
+	maxRetry          = 3
+	rateLimitDelay    = 500 * time.Millisecond
+	maxPerPage        = 50
 )
-
-// RelationEdge represents a related media entry.
-type RelationEdge struct {
-	Node         RelationNode `json:"node"`
-	RelationType string       `json:"relationType"`
-}
-
-// RelationNode holds minimal data for a related media entry.
-type RelationNode struct {
-	ID    int   `json:"id"`
-	IDMal *int  `json:"idMal"`
-	Title Title `json:"title"`
-}
 
 // Tag represents an AniList content tag with name and relevance rank.
 type Tag struct {
@@ -37,44 +25,16 @@ type Tag struct {
 
 // Show represents an anime show from the AniList API.
 type Show struct {
-	ID        int            `json:"id"`
-	IDMal     *int           `json:"idMal"`
-	Title     Title          `json:"title"`
-	Format    string         `json:"format"`
-	Episodes  *int           `json:"episodes"`
-	Duration  *int           `json:"duration"`
-	Genres    []string       `json:"genres"`
-	Tags      []Tag          `json:"tags"`
-	Status    string         `json:"status"`
-	StartDate FuzzyDate      `json:"startDate"`
-	Relations *RelationBlock `json:"relations,omitempty"`
-}
-
-// RelationBlock holds the edges wrapper.
-type RelationBlock struct {
-	Edges []RelationEdge `json:"edges"`
-}
-
-// RelationMALIDsByType returns all non-nil MAL IDs from relations matching
-// the given relation types (e.g. "PREQUEL", "ADAPTATION", "SIDE_STORY").
-// If types is empty, no relations are returned (safe default).
-func (s Show) RelationMALIDsByType(types []string) []int {
-	if s.Relations == nil || len(types) == 0 {
-		return nil
-	}
-
-	typeSet := make(map[string]bool, len(types))
-	for _, t := range types {
-		typeSet[t] = true
-	}
-
-	var ids []int
-	for _, e := range s.Relations.Edges {
-		if typeSet[e.RelationType] && e.Node.IDMal != nil && *e.Node.IDMal > 0 {
-			ids = append(ids, *e.Node.IDMal)
-		}
-	}
-	return ids
+	ID        int       `json:"id"`
+	IDMal     *int      `json:"idMal"`
+	Title     Title     `json:"title"`
+	Format    string    `json:"format"`
+	Episodes  *int      `json:"episodes"`
+	Duration  *int      `json:"duration"`
+	Genres    []string  `json:"genres"`
+	Tags      []Tag     `json:"tags"`
+	Status    string    `json:"status"`
+	StartDate FuzzyDate `json:"startDate"`
 }
 
 // SkipByDuration returns true if the show should be skipped because its
@@ -119,12 +79,6 @@ type Title struct {
 	Romaji  *string `json:"romaji"`
 }
 
-// StartedInDecember returns true if the show's start date month is December.
-// Returns false if the month is unknown.
-func (s Show) StartedInDecember() bool {
-	return s.StartDate.Month != nil && *s.StartDate.Month == 12
-}
-
 // IsWithinMonths returns true if the show's start date is within the given
 // number of months from now. If the start date is unknown, returns true
 // (don't filter out shows with unknown dates).
@@ -149,9 +103,13 @@ func (s Show) DisplayTitle() string {
 	return fmt.Sprintf("Anime #%d", s.ID)
 }
 
-// GraphQL query for fetching seasonal anime.
+// GraphQL query for fetching seasonal anime with pagination info.
 const queryTemplate = `query($s: MediaSeason, $y: Int, $page: Int, $perPage: Int, $formats: [MediaFormat]) {
 	Page(page: $page, perPage: $perPage) {
+		pageInfo {
+			hasNextPage
+			currentPage
+		}
 		media(
 			season: $s, seasonYear: $y,
 			type: ANIME,
@@ -168,16 +126,6 @@ const queryTemplate = `query($s: MediaSeason, $y: Int, $page: Int, $perPage: Int
 			tags { name }
 			status
 			startDate { year month day }
-			relations {
-				edges {
-					node {
-						id
-						idMal
-						title { romaji english }
-					}
-					relationType
-				}
-			}
 		}
 	}
 }`
@@ -186,11 +134,18 @@ type graphqlError struct {
 	Message string `json:"message"`
 }
 
+// pageInfo holds pagination metadata from AniList.
+type pageInfo struct {
+	HasNextPage bool `json:"hasNextPage"`
+	CurrentPage int  `json:"currentPage"`
+}
+
 // graphqlResponse is the top-level response from AniList.
 type graphqlResponse struct {
 	Data struct {
 		Page struct {
-			Media []Show `json:"media"`
+			PageInfo pageInfo `json:"pageInfo"`
+			Media    []Show   `json:"media"`
 		} `json:"Page"`
 	} `json:"data"`
 	Errors []graphqlError `json:"errors,omitempty"`
@@ -220,176 +175,72 @@ func (c *Client) throttle() {
 
 // FetchSeason returns all TV/ONA anime for the given season and year.
 // If includeONA is true, both TV and ONA formats are fetched; otherwise only TV.
-// Results are capped at maxResults.
+// Results are capped at maxResults. Paginates through AniList's 50-per-page limit.
 func (c *Client) FetchSeason(ctx context.Context, season string, year int, maxResults int, includeONA bool) ([]Show, error) {
-	c.throttle()
-
 	formats := []string{"TV"}
 	if includeONA {
 		formats = append(formats, "ONA")
 	}
 
-	payload := map[string]any{
-		"query": queryTemplate,
-		"variables": map[string]any{
-			"s":       season,
-			"y":       year,
-			"page":    1,
-			"perPage": maxResults,
-			"formats": formats,
-		},
+	perPage := maxPerPage
+	if maxResults > 0 && maxResults < perPage {
+		perPage = maxResults
 	}
 
-	body, err := json.Marshal(payload)
-	if err != nil {
-		return nil, fmt.Errorf("marshal payload: %w", err)
-	}
+	var allShows []Show
+	page := 1
 
-	var resp graphqlResponse
-	if err := c.doRequest(ctx, body, &resp); err != nil {
-		return nil, fmt.Errorf("fetch %s %d: %w", season, year, err)
-	}
+	for {
+		c.throttle()
 
-	if len(resp.Errors) > 0 {
-		msgs := make([]string, len(resp.Errors))
-		for i, e := range resp.Errors {
-			msgs[i] = e.Message
+		payload := map[string]any{
+			"query": queryTemplate,
+			"variables": map[string]any{
+				"s":       season,
+				"y":       year,
+				"page":    page,
+				"perPage": perPage,
+				"formats": formats,
+			},
 		}
-		return nil, fmt.Errorf("AniList GraphQL errors: %s", strings.Join(msgs, "; "))
-	}
 
-	shows := resp.Data.Page.Media
-	if shows == nil {
-		shows = []Show{}
-	}
-
-	return shows, nil
-}
-
-// chainQuery fetches relations for a show by MAL ID, used for recursive fallback chains.
-const chainQuery = `query($idMal: Int) {
-  Media(idMal: $idMal, type: ANIME) {
-    id
-    idMal
-    title { romaji english }
-    relations {
-      edges {
-        node { id idMal title { romaji english } }
-        relationType
-      }
-    }
-  }
-}`
-
-// batchChainQuery fetches relations for multiple shows in one call.
-const batchChainQuery = `query($ids: [Int]) {
-  Page(page: 1, perPage: 50) {
-    media(idMal_in: $ids, type: ANIME) {
-      id
-      idMal
-      title { romaji english }
-      relations {
-        edges {
-          node { id idMal title { romaji english } }
-          relationType
-        }
-      }
-    }
-  }
-}`
-
-// chainResponse wraps the single-media GraphQL response for chain queries.
-type chainResponse struct {
-	Data struct {
-		Media *Show `json:"Media"`
-	} `json:"data"`
-	Errors []graphqlError `json:"errors,omitempty"`
-}
-
-// batchChainResponse wraps the page-based response for batch chain queries.
-type batchChainResponse struct {
-	Data struct {
-		Page struct {
-			Media []Show `json:"media"`
-		} `json:"Page"`
-	} `json:"data"`
-	Errors []graphqlError `json:"errors,omitempty"`
-}
-
-// FetchShowByMAL fetches a single show (with relations) by its MyAnimeList ID.
-// Returns nil if the MAL ID doesn't exist on AniList.
-func (c *Client) FetchShowByMAL(ctx context.Context, malID int) (*Show, error) {
-	c.throttle()
-
-	payload := map[string]any{
-		"query": chainQuery,
-		"variables": map[string]any{
-			"idMal": malID,
-		},
-	}
-
-	body, err := json.Marshal(payload)
-	if err != nil {
-		return nil, fmt.Errorf("marshal payload: %w", err)
-	}
-
-	var resp chainResponse
-	if err := c.doRequest(ctx, body, &resp); err != nil {
-		return nil, fmt.Errorf("fetch MAL %d: %w", malID, err)
-	}
-
-	if len(resp.Errors) > 0 {
-		msgs := make([]string, len(resp.Errors))
-		for i, e := range resp.Errors {
-			msgs[i] = e.Message
+		body, err := json.Marshal(payload)
+		if err != nil {
+			return nil, fmt.Errorf("marshal payload: %w", err)
 		}
-		return nil, fmt.Errorf("AniList GraphQL errors: %s", strings.Join(msgs, "; "))
-	}
 
-	return resp.Data.Media, nil
-}
-
-// BatchFetchByMAL fetches relations for multiple shows in a single call.
-// Returns a map of MAL ID → Show for found items.
-func (c *Client) BatchFetchByMAL(ctx context.Context, malIDs []int) (map[int]Show, error) {
-	if len(malIDs) == 0 {
-		return map[int]Show{}, nil
-	}
-
-	c.throttle()
-
-	payload := map[string]any{
-		"query": batchChainQuery,
-		"variables": map[string]any{
-			"ids": malIDs,
-		},
-	}
-
-	body, err := json.Marshal(payload)
-	if err != nil {
-		return nil, fmt.Errorf("marshal payload: %w", err)
-	}
-
-	var resp batchChainResponse
-	if err := c.doRequest(ctx, body, &resp); err != nil {
-		return nil, fmt.Errorf("batch fetch MAL: %w", err)
-	}
-
-	if len(resp.Errors) > 0 {
-		msgs := make([]string, len(resp.Errors))
-		for i, e := range resp.Errors {
-			msgs[i] = e.Message
+		var resp graphqlResponse
+		if err := c.doRequest(ctx, body, &resp); err != nil {
+			return nil, fmt.Errorf("fetch %s %d (page %d): %w", season, year, page, err)
 		}
-		return nil, fmt.Errorf("AniList GraphQL errors: %s", strings.Join(msgs, "; "))
+
+		if len(resp.Errors) > 0 {
+			msgs := make([]string, len(resp.Errors))
+			for i, e := range resp.Errors {
+				msgs[i] = e.Message
+			}
+			return nil, fmt.Errorf("AniList GraphQL errors: %s", strings.Join(msgs, "; "))
+		}
+
+		shows := resp.Data.Page.Media
+		if shows == nil {
+			shows = []Show{}
+		}
+		allShows = append(allShows, shows...)
+
+		if !resp.Data.Page.PageInfo.HasNextPage {
+			break
+		}
+
+		if maxResults > 0 && len(allShows) >= maxResults {
+			allShows = allShows[:maxResults]
+			break
+		}
+
+		page++
 	}
 
-	result := make(map[int]Show, len(resp.Data.Page.Media))
-	for _, show := range resp.Data.Page.Media {
-		if show.IDMal != nil && *show.IDMal > 0 {
-			result[*show.IDMal] = show
-		}
-	}
-	return result, nil
+	return allShows, nil
 }
 
 // Ping checks connectivity to the AniList API by fetching a single result.

@@ -1,0 +1,108 @@
+package filter
+
+import (
+	"fmt"
+	"log/slog"
+	"strings"
+
+	"github.com/calmcacil/anilistgen/internal/anilist"
+)
+
+type Config struct {
+	Blacklist   []string
+	ExcludeTags []string
+	AheadMonths int
+}
+
+func Filter(shows []anilist.Show, cfg Config) []anilist.Show {
+	var filtered []anilist.Show
+	for _, show := range shows {
+		title := show.DisplayTitle()
+		idMal := 0
+		if show.IDMal != nil {
+			idMal = *show.IDMal
+		}
+
+		if show.SkipByDuration() {
+			slog.Debug("skipped show (duration <= 10 min)",
+				"title", title,
+				"duration", show.Duration)
+			continue
+		}
+
+		if isBlacklisted(title, idMal, cfg.Blacklist) {
+			slog.Debug("skipped show (blacklisted)",
+				"title", title,
+				"idMal", idMal)
+			continue
+		}
+
+		if hasExcludedTag(show, cfg.ExcludeTags) {
+			slog.Debug("skipped show (excluded tag)",
+				"title", title,
+				"tags", show.Tags)
+			continue
+		}
+
+		filtered = append(filtered, show)
+	}
+
+	skipped := len(shows) - len(filtered)
+	if skipped > 0 {
+		slog.Info("filtered shows",
+			"total", len(shows),
+			"skipped", skipped,
+			"remaining", len(filtered))
+	}
+
+	return filtered
+}
+
+func isBlacklisted(title string, idMal int, blacklist []string) bool {
+	for _, entry := range blacklist {
+		if entry == "" {
+			continue
+		}
+		var malID int
+		if _, err := fmt.Sscanf(entry, "%d", &malID); err == nil && malID > 0 {
+			if malID == idMal {
+				return true
+			}
+			continue
+		}
+		if strings.Contains(strings.ToLower(title), strings.ToLower(entry)) {
+			return true
+		}
+	}
+	return false
+}
+
+func hasExcludedTag(show anilist.Show, tags []string) bool {
+	for _, exclude := range tags {
+		if exclude == "" {
+			continue
+		}
+		if show.HasTag(exclude) {
+			return true
+		}
+	}
+	return false
+}
+
+func FilterFuture(shows []anilist.Show, aheadMonths int) []anilist.Show {
+	if aheadMonths <= 0 {
+		return shows
+	}
+	var filtered []anilist.Show
+	for _, show := range shows {
+		title := show.DisplayTitle()
+		if !show.IsWithinMonths(aheadMonths) {
+			slog.Debug("skipped show (too far in the future)",
+				"title", title,
+				"ahead_months", aheadMonths)
+			continue
+		}
+		filtered = append(filtered, show)
+	}
+	return filtered
+}
