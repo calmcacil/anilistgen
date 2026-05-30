@@ -192,6 +192,16 @@ func titleVariations(title string) []string {
 		add(strings.TrimSpace(re.ReplaceAllString(title, r.repl)))
 	}
 
+	// Try shorter by taking the last 3-4 words (franchise name after subtitle prefix)
+	// e.g. "STEEL BALL RUN JoJo's Bizarre Adventure" → "JoJo's Bizarre Adventure"
+	trimmed := strings.TrimSpace(regexp.MustCompile(`\s+\d+(st|nd|rd|th)\s+STAGE.*$|\s+Season\s+\d+.*$`).ReplaceAllString(title, ""))
+	words := strings.Fields(trimmed)
+	if len(words) > 4 {
+		for n := 3; n <= 4 && n < len(words); n++ {
+			add(strings.Join(words[len(words)-n:], " "))
+		}
+	}
+
 	// Also try shorter forms: strip leading subtitle-like segments
 	parts := strings.SplitN(title, ":", 2)
 	if len(parts) == 2 {
