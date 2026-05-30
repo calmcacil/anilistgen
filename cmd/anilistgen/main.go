@@ -168,6 +168,16 @@ func manualMatchPath(stateFile string) string {
 	return filepath.Join(dir, name+"_manual.yml")
 }
 
+// communityMappingPath derives the TVDB mapping path from the state-file path.
+// e.g. /tmp/anilistgen.lastrun → /tmp/anilistgen_tvdb.yaml
+func communityMappingPath(stateFile string) string {
+	if stateFile == "" {
+		return ""
+	}
+	dir := filepath.Dir(stateFile)
+	return filepath.Join(dir, "anilistgen_tvdb.yaml")
+}
+
 // runOneshot processes all configured seasons once and exits.
 func runOneshot(configPath string, dryRun bool, outputDir string, verbose bool) error {
 	cfg, _, err := config.Load(configPath)
@@ -209,6 +219,7 @@ func runOneshot(configPath string, dryRun bool, outputDir string, verbose bool) 
 		ExcludeTags:           cfg.AniList.ExcludeTags,
 		ListCachePath:         listCachePath(cfg.StateFile),
 		ManualMatchFile:       manualMatchPath(cfg.StateFile),
+		CommunityMappingPath: communityMappingPath(cfg.StateFile),
 	}
 
 	syncer := sync.New(aniClient, mdbClient, syncCfg)
@@ -275,6 +286,7 @@ func runDaemon(configPath string, dryRun bool, outputDir string, verbose bool) e
 		ExcludeTags:           cfg.AniList.ExcludeTags,
 		ListCachePath:         listCachePath(cfg.StateFile),
 		ManualMatchFile:       manualMatchPath(cfg.StateFile),
+		CommunityMappingPath: communityMappingPath(cfg.StateFile),
 	}
 
 	syncer := sync.New(aniClient, mdbClient, syncCfg)
@@ -335,6 +347,7 @@ func runDaemon(configPath string, dryRun bool, outputDir string, verbose bool) e
 			ExcludeTags:           newCfg.AniList.ExcludeTags,
 			ListCachePath:         listCachePath(newCfg.StateFile),
 			ManualMatchFile:       manualMatchPath(newCfg.StateFile),
+			CommunityMappingPath: communityMappingPath(newCfg.StateFile),
 		}
 
 		cfg = newCfg

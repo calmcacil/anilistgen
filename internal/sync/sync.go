@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
+	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -74,12 +76,13 @@ type SeasonResult struct {
 
 // Syncer orchestrates fetching from AniList and publishing to MDBList.
 type Syncer struct {
-	anilist       *anilist.Client
-	mdblist       *mdblist.Client
-	cfg           SyncConfig
-	cache         *itemCache
-	manualMatches map[int]string // MAL ID → user-provided match string
-	pendingManual []ManualEntry  // newly unmatched shows this run
+	anilist          *anilist.Client
+	mdblist          *mdblist.Client
+	cfg              SyncConfig
+	cache            *itemCache
+	manualMatches    map[int]string // MAL ID → user-provided match string
+	pendingManual    []ManualEntry  // newly unmatched shows this run
+	communityMapping map[int]int    // MAL ID → TVDB ID from tvdb-mal.yaml
 }
 
 // itemCache tracks the provider IDs we last synced for each list,
@@ -110,6 +113,66 @@ func (c *itemCache) save(path string) error {
 		return err
 	}
 	return os.WriteFile(path, data, 0600)
+}
+
+// TvdbEntry is a single mapping from MAL ID to TVDB ID.
+type TvdbEntry struct {
+	MALID    int    `yaml:"malid"`
+	TVDBID   int    `yaml:"tvdbid"`
+	Season   int    `yaml:"tvdbseason"`
+	Title    string `yaml:"title"`
+}
+
+// tvdbMappingFile wraps the community mapping YAML structure.
+type tvdbMappingFile struct {
+	AnimeMap []TvdbEntry `yaml:"AnimeMap"`
+}
+
+// defaultMappingURL is where we download the community mapping if not cached.
+const defaultMappingURL = "https://raw.githubusercontent.com/shinkro/community-mapping/main/tvdb-mal.yaml"
+
+// loadCommunityMapping reads the tvdb-mal.yaml file into a lookup map.
+// If the file doesn't exist, it downloads it from the community-mapping repo.
+func loadCommunityMapping(path string) map[int]int {
+	result := map[int]int{}
+	if path == "" {
+		return result
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		// File doesn't exist — try downloading it
+		slog.Info("downloading community mapping", "url", defaultMappingURL)
+		client := &http.Client{Timeout: 30 * time.Second}
+		resp, err := client.Get(defaultMappingURL)
+		if err != nil {
+			slog.Warn("failed to download community mapping", "error", err)
+			return result
+		}
+		defer resp.Body.Close()
+		data, err = io.ReadAll(resp.Body)
+		if err != nil {
+			slog.Warn("failed to read community mapping response", "error", err)
+			return result
+		}
+		// Save for next run
+		if err := os.MkdirAll(filepath.Dir(path), 0755); err == nil {
+			os.WriteFile(path, data, 0600)
+		}
+	}
+
+	var mf tvdbMappingFile
+	if err := yaml.Unmarshal(data, &mf); err != nil {
+		slog.Warn("failed to parse community mapping", "path", path, "error", err)
+		return result
+	}
+	for _, e := range mf.AnimeMap {
+		if e.MALID > 0 && e.TVDBID > 0 {
+			result[e.MALID] = e.TVDBID
+		}
+	}
+	slog.Info("loaded community mapping", "entries", len(result), "path", path)
+	return result
 }
 
 // ManualEntry holds a single show that couldn't be matched automatically.
@@ -193,6 +256,7 @@ type SyncConfig struct {
 	ExcludeTags             []string
 	ListCachePath           string // path to item cache JSON file
 	ManualMatchFile         string // path to manual_match.yml
+	CommunityMappingPath    string // path to tvdb-mal.yaml mapping file
 }
 
 // isBlacklisted checks if a show should be skipped.
@@ -478,12 +542,14 @@ func (s *Syncer) resolveManualMatch(ctx context.Context, matchStr string) map[st
 func New(ani *anilist.Client, mdb *mdblist.Client, cfg SyncConfig) *Syncer {
 	cache := loadItemCache(cfg.ListCachePath)
 	manualMatches := loadManualMatches(cfg.ManualMatchFile)
+	communityMapping := loadCommunityMapping(cfg.CommunityMappingPath)
 	return &Syncer{
-		anilist:       ani,
-		mdblist:       mdb,
-		cfg:           cfg,
-		cache:         cache,
-		manualMatches: manualMatches,
+		anilist:          ani,
+		mdblist:          mdb,
+		cfg:              cfg,
+		cache:            cache,
+		manualMatches:    manualMatches,
+		communityMapping: communityMapping,
 	}
 }
 
@@ -671,11 +737,6 @@ func (s *Syncer) writeJSONOutput(season string, year int, shows []anilist.Show, 
 
 // syncMDBList does the actual MDBList list creation/update with items.
 func (s *Syncer) syncMDBList(ctx context.Context, season string, year int, title, desc string, shows []anilist.Show) Result {
-	// Deduplicate any stale lists from interrupted runs
-	if s.mdblist != nil {
-		s.mdblist.DeduplicateLists(ctx)
-	}
-
 	slog.Debug("looking up existing list", "title", title)
 
 	existing, err := s.mdblist.FindListByTitle(ctx, title)
@@ -736,7 +797,20 @@ func (s *Syncer) syncMDBList(ctx context.Context, season string, year int, title
 		it := items[i]
 		displayTitle := it.show.DisplayTitle()
 
-		// Try direct MAL ID first
+		// Try direct MAL ID first — check community mapping (fast, no API)
+		if it.directMAL > 0 {
+			if tvdbID, ok := s.communityMapping[it.directMAL]; ok {
+				mdbItems = append(mdbItems, mdbItem{
+					id:    map[string]any{"tvdb": tvdbID},
+					title: displayTitle,
+				})
+				items[i].found = true
+				foundDirect++
+				continue
+			}
+		}
+
+		// Fall back to MDBList batch lookup results
 		if it.directMAL > 0 {
 			if info, ok := malInfoMap[it.directMAL]; ok {
 				id := map[string]any{}
@@ -1182,6 +1256,11 @@ func filterEmptyStrings(s []string) []string {
 
 // SyncAll processes all configured seasons.
 func (s *Syncer) SyncAll(ctx context.Context, seasons []string, year int) []Result {
+	// Deduplicate once before any season processing
+	if s.mdblist != nil {
+		s.mdblist.DeduplicateLists(ctx)
+	}
+
 	results := make([]Result, 0, len(seasons))
 	for _, season := range seasons {
 		r := s.SyncSeason(ctx, season, year)

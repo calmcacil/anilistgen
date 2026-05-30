@@ -63,10 +63,11 @@ type MediaInfo struct {
 
 // Client manages communication with the MDBList API.
 type Client struct {
-	http     *http.Client
-	apiKey   string
-	lastCall time.Time
-	mu       sync.Mutex
+	http       *http.Client
+	apiKey     string
+	lastCall   time.Time
+	mu         sync.Mutex
+	cachedLists []List // cached result of ListLists, cleared after Create/Delete
 }
 
 // New creates a new MDBList client.
@@ -112,7 +113,15 @@ func (c *Client) Ping(ctx context.Context) error {
 }
 
 // ListLists returns all lists belonging to the authenticated user.
+// Results are cached and reused across calls until a list mutation occurs.
 func (c *Client) ListLists(ctx context.Context) ([]List, error) {
+	c.mu.Lock()
+	if c.cachedLists != nil {
+		c.mu.Unlock()
+		return c.cachedLists, nil
+	}
+	c.mu.Unlock()
+
 	c.throttle()
 	u := fmt.Sprintf("%s/lists/user?apikey=%s", apiBase, url.QueryEscape(c.apiKey))
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
@@ -302,7 +311,7 @@ func (c *Client) DeleteAndRecreate(ctx context.Context, listID int, name, descri
 
 // BatchLookupByMAL looks up media by a list of MAL IDs.
 // Returns a map of malID -> MediaInfo for found items (unfound IDs are omitted).
-const batchLookupSize = 15
+const batchLookupSize = 25
 
 // LookupByMAL checks a single MAL ID against MDBList's database.
 // Returns nil if not found.
