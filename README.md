@@ -1,109 +1,225 @@
 # animelistgen
 
-Fetch all anime for every season of a given year from AniList and
-create/update corresponding MDBList lists for use with Agregarr.
-
-## Why
+Fetch all anime for every season of a given year from **AniList** and
+create/update **MDBList** lists for use with **Agregarr**.
 
 Agregarr has no built-in "all shows airing this season" source. Community
-Trakt/MDBList lists for seasonal anime are unreliable. This tool generates
-authoritative MDBList lists directly from AniList's seasonal data.
+lists are unreliable. This tool generates authoritative lists directly
+from AniList's seasonal data.
+
+---
 
 ## Quick start
 
 ```bash
-# 1. Generate a default config
+# Generate a default config
 ./animelistgen init-config
 
-# 2. Edit config — add your MDBList API key and years
-#    (get a free key at https://mdblist.com)
+# Edit it — add your MDBList API key (get one free at https://mdblist.com)
 vim animelistgen.yaml
 
-# 3. Dry-run to preview what will happen
+# Preview what will happen
 ./animelistgen -dry-run
 
-# 4. Push lists to MDBList
+# Push lists to MDBList
 ./animelistgen
 ```
 
-## Usage
+---
 
-```bash
-animelistgen              Oneshot — process all seasons, print URLs
-animelistgen daemon       Daemon — loop at configurable interval
-animelistgen init-config  Generate a default config file
-animelistgen validate     Validate config and API connectivity
-```
+## Reference
+
+### Commands
+
+| Command | Description |
+|---|---|
+| `animelistgen` | Oneshot — process all configured seasons, print list URLs |
+| `animelistgen daemon` | Daemon — loop at configurable interval, runs on start |
+| `animelistgen init-config` | Generate a default YAML config file |
+| `animelistgen validate` | Validate config + test AniList and MDBList API connectivity |
 
 ### Global flags
 
 | Flag | Description |
 |---|---|
-| `-config PATH` / `-c PATH` | Config file path (overrides default search) |
-| `-dry-run` | Print what would be done without MDBList API calls |
-| `-output DIR` / `-o DIR` | Write JSON files per season instead of MDBList |
-| `-v` / `-verbose` | Verbose logging |
-| `-h` / `-help` | Print help |
+| `-config PATH`, `-c PATH` | Config file path (overrides default search) |
+| `-dry-run` | Print what would be done without making MDBList API calls |
+| `-output DIR`, `-o DIR` | Write JSON files per season instead of MDBList |
+| `-v`, `-verbose` | Verbose (debug) logging |
+| `-h`, `-help` | Print usage |
+
+### Output modes
+
+| Mode | Trigger | Behavior |
+|---|---|---|
+| Normal | `animelistgen` | Fetches AniList, resolves to MDBList, creates/updates lists |
+| Dry-run | `animelistgen -dry-run` | Fetches AniList only, prints what it would do |
+| File output | `animelistgen -output /tmp/x` | Writes one JSON file per season with full show data |
+
+---
 
 ## Configuration
 
-The tool reads config from these sources (later overrides earlier):
-1. Config file: `./animelistgen.yaml` → `~/.config/animelistgen/animelistgen.yaml`
-2. CLI flag: `-config PATH`
-3. **Environment variables** — every setting has an `ALG_` prefixed env var
+The tool reads settings from three sources (later overrides earlier):
 
-Run `animelistgen init-config` to generate a default file with all options
-documented inline. Key settings:
+1. **Config file**: `./animelistgen.yaml` → `~/.config/animelistgen/animelistgen.yaml`
+2. **CLI flag**: `-config /path/to/config.yaml`
+3. **Environment variables**: Every setting has an `ALG_` prefixed env var
+
+### Config file reference
+
+Run `animelistgen init-config` to generate a documented template. Full reference:
 
 ```yaml
-mdblist_api_key: ""          # Required. Get one at https://mdblist.com
+# ── Required ──────────────────────────────────────────────────────────
+mdblist_api_key: ""        # MDBList API key (or set MDBLIST_API_KEY env var)
+
+# ── Schedule ──────────────────────────────────────────────────────────
+interval: "168h"           # Daemon interval: "168h" (week), "24h" (day), "0" (oneshot)
+run_on_start: true         # Run immediately on daemon startup
+state_file: /tmp/animelistgen.lastrun  # Last-run timestamp (anti-hammer)
+
+# ── AniList source ────────────────────────────────────────────────────
 anilist:
-  years: [2026, 2027]        # Years to process
-  seasons: [all]             # Or: winter, spring, summer, fall
-  max_per_season: 100
-  include_ona: true          # Include ONA format alongside TV
+  year: 0                  # Single year (0 = current). Ignored if years is set
+  years: [2026, 2027]      # Multiple years — overrides year
+  seasons: [all]           # Or: winter, spring, summer, fall
+  max_per_season: 100      # Max shows fetched per season from AniList
+  include_ona: true        # Include ONA format alongside TV
+  fallback_relation_types: [PREQUEL, PARENT]
+    # When a show is not in MDBList by its direct MAL ID, try these
+    # AniList relation types as fallback:
+    #   PREQUEL   — previous season of the same show (Frieren S2 → Frieren S1)
+    #   PARENT    — broader franchise entry (DBS: Beerus → Dragon Ball Super)
+    #   ADAPTATION — source material (usually manga — use with caution)
+    #   SIDE_STORY — side stories (usually unrelated — use with caution)
+
+# ── MDBList output ────────────────────────────────────────────────────
 mdblist:
   title_template: "Anime {season} {year}"
-  public: true
-  blacklist: []              # Titles or MAL IDs to skip
+    # List name template. Placeholders: {season}, {year}
+    # Example: "Anime Winter 2026"
+  description_template: "All anime TV series airing in {season} {year}, sourced from AniList. Generated by animelistgen."
+  public: true             # false = private list
+  blacklist: []            # Shows to skip. Titles (substring) or MAL IDs:
+                           #   - "One Piece"
+                           #   - 57658
+
+# ── Logging ───────────────────────────────────────────────────────────
+logging:
+  level: info              # debug, info, warn, error
+  file: ""                 # Log file path. Empty = stderr
 ```
 
 ### Environment variables
 
-Every config field can be set via `ALG_` prefixed env vars — no config file
-needed. This is especially useful for Docker.
+Every config field can be set via env vars — no config file needed.
+Useful for Docker, CI/CD, or containers.
 
-| Env var | Maps to | Example |
+| Env var | Maps to | Default |
 |---|---|---|
-| `ALG_MDBLIST_API_KEY` | `mdblist_api_key` | `abc123` |
-| `ALG_INTERVAL` | `interval` | `24h` |
+| `ALG_MDBLIST_API_KEY` | `mdblist_api_key` | `""` |
+| `MDBLIST_API_KEY` | same (legacy fallback) | `""` |
+| `ALG_INTERVAL` | `interval` | `168h` |
+| `ALG_RUN_ON_START` | `run_on_start` | `true` |
+| `ALG_STATE_FILE` | `state_file` | `/tmp/animelistgen.lastrun` |
+| `ALG_ANILIST_YEAR` | `anilist.year` | `0` (current) |
 | `ALG_ANILIST_YEARS` | `anilist.years` | `2026,2027` |
-| `ALG_ANILIST_SEASONS` | `anilist.seasons` | `winter,spring` |
+| `ALG_ANILIST_SEASONS` | `anilist.seasons` | `all` |
 | `ALG_ANILIST_MAX_PER_SEASON` | `anilist.max_per_season` | `100` |
 | `ALG_ANILIST_INCLUDE_ONA` | `anilist.include_ona` | `true` |
+| `ALG_ANILIST_FALLBACK_RELATIONS` | `anilist.fallback_relation_types` | `PREQUEL,PARENT` |
 | `ALG_MDBLIST_TITLE_TEMPLATE` | `mdblist.title_template` | `Anime {season} {year}` |
-| `ALG_MDBLIST_DESCRIPTION_TEMPLATE` | `mdblist.description_template` | `...` |
+| `ALG_MDBLIST_DESCRIPTION_TEMPLATE` | `mdblist.description_template` | (long default) |
 | `ALG_MDBLIST_PUBLIC` | `mdblist.public` | `true` |
-| `ALG_MDBLIST_BLACKLIST` | `mdblist.blacklist` | `One Piece,57658` |
+| `ALG_MDBLIST_BLACKLIST` | `mdblist.blacklist` | `""` |
 | `ALG_LOG_LEVEL` | `logging.level` | `info` |
+| `ALG_LOG_FILE` | `logging.file` | `""` (stderr) |
 
-Legacy `MDBLIST_API_KEY` is still supported as a fallback for the API key.
+**Notes on env var format:**
+- Lists (YEARS, SEASONS, BLACKLIST, FALLBACK_RELATIONS) use comma separation: `2026,2027`
+- Booleans (RUN_ON_START, PUBLIC, INCLUDE_ONA) accept `true`/`1` or `false`/`0`
+- INTERVAL is a Go duration string: `168h` (week), `24h` (day), `30m`, `0` (oneshot)
 
-## MDBList plan limits
+### Blacklist
 
-The free MDBList plan caps you at **4 static lists**. If you sync
-4 seasons × 2 years = 8 lists, you'll hit this limit on the 5th list.
+Shows to exclude from lists. Supports:
+- **MAL IDs**: `57658` skips that specific show
+- **Title substrings**: `"One Piece"` skips any show with "One Piece" in the title
+- Matching is case-insensitive
 
-| Plan | Lists | Upgrade |
+---
+
+## How it works
+
+### Sync pipeline
+
+For each configured season and year:
+
+```
+AniList query ──→ Filter (duration ≤10 min, blacklist)
+      │
+      ▼
+Batch-resolve MAL IDs via MDBList lookup
+      │
+      ├─ Direct MAL ID found? → Add item by IMDB ID
+      │
+      └─ Not found? → Try PREQUEL/PARENT MAL IDs from AniList relations
+                       (configurable via fallback_relation_types)
+      │
+      ▼
+Find existing MDBList list by title → Delete + recreate with items
+(or create new if first run)
+```
+
+### Fallback matching
+
+When a specific seasonal entry doesn't exist in MDBList's database,
+the tool traces the show's AniList `relations` to find a parent entry
+that MDBList does have:
+
+| Relation type | Use case | Example |
 |---|---|---|
-| Free | 4 | — |
-| 1€/month | More | [Patreon](https://www.patreon.com/mdblist) |
+| `PREQUEL` | Previous season of the same show | Frieren S2 → Frieren S1 |
+| `PARENT` | Broader franchise entry | Dragon Ball Super: Beerus → Dragon Ball Super |
+| `ADAPTATION` | Source material (manga — usually wrong) | Usually skippable |
+| `SIDE_STORY` | Spin-off content (usually wrong) | Usually skippable |
 
-## Agregarr integration
+Default: `[PREQUEL, PARENT]` strikes the right balance — catches seasonal
+sequels and franchise entries without introducing manga/spin-off noise.
 
-After a sync, paste the printed MDBList URLs into Agregarr as **MDBList →
-Custom List** sources. Create one collection per season. Re-running updates
-the lists in-place — Agregarr picks up changes on its next sync.
+### Lists are rebuilt from scratch each sync
+
+Each run **deletes and recreates** lists. This means:
+- Any incorrect entries from a previous run are automatically removed
+- The list always reflects the current AniList seasonal data
+- Changing fallback relation types or blacklist takes full effect immediately
+- Running more frequently as new shows air simply updates everything
+
+---
+
+## Daemon mode
+
+```bash
+animelistgen daemon
+```
+
+On start:
+- **`run_on_start: true`** (default) — runs a sync immediately, then sleeps
+- **`run_on_start: false`** — sleeps for the interval first, then runs
+
+After each sync:
+- Writes timestamp to `state_file` (`/tmp/animelistgen.lastrun`)
+- If the container restarts within 1 hour, the sync is skipped (anti-hammer)
+
+Shuts down gracefully on `SIGINT` or `SIGTERM`.
+
+### Weekly default
+
+The default interval is **168h (1 week)**. This keeps lists reasonably current
+without hammering APIs. Change to `24h` for daily updates or `0` for one-shot.
+
+---
 
 ## Deployment
 
@@ -111,6 +227,8 @@ the lists in-place — Agregarr picks up changes on its next sync.
 
 ```bash
 sudo cp animelistgen /usr/local/bin/
+sudo mkdir -p /etc/animelistgen
+sudo cp animelistgen.yaml /etc/animelistgen/
 sudo cp deploy/animelistgen.service /etc/systemd/system/
 sudo cp deploy/animelistgen.timer /etc/systemd/system/
 sudo systemctl daemon-reload
@@ -119,52 +237,70 @@ sudo systemctl enable --now animelistgen.timer
 
 ### Docker (ghcr.io)
 
-A prebuilt image is available at `ghcr.io/calmcacil/animelistgen`.
-Every push to `master` and every semver tag rebuilds it automatically.
+Prebuilt multi-arch image (linux/amd64 + linux/arm64):
+`ghcr.io/calmcacil/animelistgen:latest`
 
-**Daemon mode** (default):
-
+**Daemon** (default command):
 ```bash
 docker run -d --name animelistgen --restart unless-stopped \
-  -e ALG_MDBLIST_API_KEY=your_key_here \
-  -e ALG_INTERVAL=24h \
-  -e ALG_ANILIST_YEARS=2026,2027 \
+  -e ALG_MDBLIST_API_KEY=your_key \
   ghcr.io/calmcacil/animelistgen:latest
 ```
 
-**One-shot mode**:
-
+**One-shot**:
 ```bash
 docker run --rm \
-  -e ALG_MDBLIST_API_KEY=your_key_here \
+  -e ALG_MDBLIST_API_KEY=your_key \
   -e ALG_INTERVAL=0 \
   ghcr.io/calmcacil/animelistgen:latest animelistgen
 ```
 
-**Using docker-compose** (edit `docker-compose.yml` or set env in `.env`):
-
+**docker-compose**:
 ```bash
 docker compose up -d
 ```
 
-All configuration is via environment variables — no config file mount required.
-If you prefer, you can mount a YAML config at `/etc/animelistgen/animelistgen.yaml`
-and omit the env vars.
+All config via env vars — no file mount needed. See `docker-compose.yml`
+for the full environment reference.
 
-## Output modes
+---
 
-| Mode | Trigger | What happens |
+## Agregarr integration
+
+After each sync, paste the printed URLs into Agregarr as
+**MDBList → Custom List** sources. Create one collection per season.
+
+Re-running updates the lists in-place — Agregarr picks up changes
+on its next sync.
+
+---
+
+## MDBList plan limits
+
+| Plan | Static lists | Upgrade |
 |---|---|---|
-| Normal | `animelistgen` | Creates/updates MDBList lists, prints URLs |
-| Dry-run | `animelistgen -dry-run` | Fetches AniList, prints what it would do, no MDBList calls |
-| File | `animelistgen -output /tmp/x` | Writes JSON files per season instead of MDBList |
+| Free | 4 | — |
+| 1€/month | More | [Patreon](https://www.patreon.com/mdblist) |
+
+4 lists = one year of seasons. For two years (8 lists) you need a paid plan.
+
+---
+
+## Rate limits
+
+| API | Limit | Tool usage per sync | Headroom |
+|---|---|---|---|
+| AniList | 30 req/min | 4–8 requests | 4–7× |
+| MDBList Free | 1,000 req/day | ~24–40 requests | 25–40× |
+
+---
 
 ## Contributing
 
-1. Read [`AGENTS.md`](./AGENTS.md) for architecture details.
+1. Read [`AGENTS.md`](./AGENTS.md) for architecture and design decisions.
 2. Read [`specs/anilist-seasonal-mdblist/PRODUCT.md`](./specs/anilist-seasonal-mdblist/PRODUCT.md)
    for the full behavioral specification.
 3. Run `go vet ./...` before submitting changes.
 4. The config file `animelistgen.yaml` is in `.gitignore` — use
    `animelistgen.yaml.example` as a reference. Never commit real API keys.
-5. `go build ./cmd/animelistgen` produces the binary.
+5. Build with `go build ./cmd/animelistgen`.
