@@ -198,6 +198,58 @@ Each run **deletes and recreates** lists. This means:
 
 ---
 
+## Season timing
+
+AniList groups anime into seasons based on the month their first episode
+airs, using the following official definitions:
+
+| Season   | Months           | Typical premiere period |
+|----------|------------------|------------------------|
+| **WINTER** | December – February | Early January  |
+| **SPRING** | March – May         | Early April    |
+| **SUMMER** | June – August       | Early July     |
+| **FALL**   | September – November | Early October  |
+
+### Why "Winter 2026" needs explanation
+
+AniList labels seasons by their **calendar year** (`seasonYear`). Because
+Winter spans December–February, a show that premieres in **January 2026**
+is categorized as **WINTER 2026**, while a show that premieres in
+**December 2025** is categorized as **WINTER 2025** — even though they're
+only a few weeks apart.
+
+This means **WINTER 2026 does not include December 2025 shows**. If you
+configure the tool for year `2026` and season `WINTER`, you'll get anime
+that started airing in January–February 2026 (and possibly very late
+December 2025 if the show itself was tagged as WINTER 2026 on AniList).
+
+### Season start timing (approximate)
+
+The Japanese anime industry follows a seasonal broadcast calendar. Most
+shows premiere in the first two weeks of each season:
+
+| Season   | Earliest shows | Peak premiere window | Late stragglers |
+|----------|---------------|----------------------|----------------|
+| **WINTER** | Late December  | January 1–15         | Through February |
+| **SPRING** | Late March     | April 1–15           | Through May      |
+| **SUMMER** | Late June      | July 1–15            | Through August   |
+| **FALL**   | Late September | October 1–15         | Through November |
+
+These aren't hard rules — some shows premiere a week or two earlier or
+later, and streaming-exclusive releases can start mid-season.
+
+### Practical example
+
+| What you configure | What you get |
+|---|---|
+| Year `2026`, season `WINTER` | Shows airing Jan–Feb 2026 (peak: early Jan) |
+| Year `2026`, season `SPRING` | Shows airing Mar–May 2026 (peak: early Apr) |
+| Year `2026`, season `SUMMER` | Shows airing Jun–Aug 2026 (peak: early Jul) |
+| Year `2026`, season `FALL`   | Shows airing Sep–Nov 2026 (peak: early Oct) |
+| Year `2026`, seasons `[WINTER, SPRING, SUMMER, FALL]` | The whole 2026 broadcast year |
+
+---
+
 ## Daemon mode
 
 ```bash
