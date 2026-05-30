@@ -315,10 +315,11 @@ sudo systemctl enable --now anilistgen.timer
 
 ### Docker (ghcr.io)
 
-Prebuilt multi-arch image (linux/amd64 + linux/arm64):
+**Distroless, rootless** image — no shell, no package manager, runs as
+non-root user (uid 65534). Multi-arch (linux/amd64 + linux/arm64):
 `ghcr.io/calmcacil/anilistgen:latest`
 
-**Daemon** (default command):
+**Daemon** (default command, all config via env vars):
 ```bash
 docker run -d --name anilistgen --restart unless-stopped \
   -e ALG_MDBLIST_API_KEY=your_key \
@@ -333,13 +334,21 @@ docker run --rm \
   ghcr.io/calmcacil/anilistgen:latest anilistgen
 ```
 
+**With config file bind mount**:
+```bash
+docker run -d --name anilistgen --restart unless-stopped \
+  -v ./anilistgen.yaml:/etc/anilistgen/anilistgen.yaml:ro \
+  ghcr.io/calmcacil/anilistgen:latest \
+  -config /etc/anilistgen/anilistgen.yaml
+```
+
 **docker-compose**:
 ```bash
 docker compose up -d
 ```
 
 All config via env vars — no file mount needed. See `docker-compose.yml`
-for the full environment reference.
+for the full environment reference and config file option.
 
 ---
 

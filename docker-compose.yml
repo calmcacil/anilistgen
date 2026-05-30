@@ -5,6 +5,9 @@ services:
     image: ghcr.io/calmcacil/anilistgen:latest
     container_name: anilistgen
     restart: unless-stopped
+    # Run as non-root user (uid 65534 matches distroless:nonroot).
+    # Override with your own user ID if needed.
+    user: "65534:65534"
     environment:
       # Required
       - ALG_MDBLIST_API_KEY=${ALG_MDBLIST_API_KEY:-}
@@ -15,7 +18,7 @@ services:
       # Run on container start (default: true). Set to false to wait for first interval.
       - ALG_RUN_ON_START=${ALG_RUN_ON_START:-true}
 
-      # Path for last-run timestamp file (sanity check against rapid restarts)
+      # Path for last-run timestamp and item cache (sanity check against rapid restarts)
       # Mount a volume at /data to persist across container recreations
       - ALG_STATE_FILE=${ALG_STATE_FILE:-/tmp/anilistgen.lastrun}
 
@@ -24,6 +27,8 @@ services:
       - ALG_ANILIST_SEASONS=${ALG_ANILIST_SEASONS:-all}
       - ALG_ANILIST_MAX_PER_SEASON=${ALG_ANILIST_MAX_PER_SEASON:-100}
       - ALG_ANILIST_INCLUDE_ONA=${ALG_ANILIST_INCLUDE_ONA:-true}
+      - ALG_ANILIST_WINTER_OVERFLOW=${ALG_ANILIST_WINTER_OVERFLOW:-false}
+      - ALG_ANILIST_EXCLUDE_TAGS=${ALG_ANILIST_EXCLUDE_TAGS:-}
 
       # MDBList list settings
       - ALG_MDBLIST_TITLE_TEMPLATE=${ALG_MDBLIST_TITLE_TEMPLATE:-Anime {season} {year}}
@@ -34,13 +39,22 @@ services:
       # Logging
       - ALG_LOG_LEVEL=${ALG_LOG_LEVEL:-info}
 
-    # Optionally persist the state file across container recreations:
+    # Option A: pure env-var config (no config file needed)
+    # ──────────────────────────────────────────────────────
+    # All settings can be configured via the ALG_* env vars above.
+    # No file mount required.
+
+    # Option B: YAML config file bind mount
+    # ──────────────────────────────────────────────────────
+    # Uncomment to use a YAML config file at /etc/anilistgen/anilistgen.yaml.
+    # Overrides any ALG_* env vars with matching keys (ALG_* takes precedence).
+    # volumes:
+    #   - ./anilistgen.yaml:/etc/anilistgen/anilistgen.yaml:ro
+    # command: ["-config", "/etc/anilistgen/anilistgen.yaml"]
+
+    # Optionally persist the state file and item cache across container recreations:
     # volumes:
     #   - anilistgen_data:/data
-
-    # If your Docker bridge can't reach the internet (e.g. VPN/tailscale),
-    # uncomment to use the host network stack:
-    # network_mode: host
 
 volumes:
   anilistgen_data:
