@@ -9,8 +9,15 @@ services:
       # Required
       - ALG_MDBLIST_API_KEY=${ALG_MDBLIST_API_KEY:-}
 
-      # Sync schedule — "0" for one-shot, "24h" for daily daemon
-      - ALG_INTERVAL=${ALG_INTERVAL:-24h}
+      # Sync schedule — "168h" for weekly, "24h" for daily, "0" for one-shot
+      - ALG_INTERVAL=${ALG_INTERVAL:-168h}
+
+      # Run on container start (default: true). Set to false to wait for first interval.
+      - ALG_RUN_ON_START=${ALG_RUN_ON_START:-true}
+
+      # Path for last-run timestamp file (sanity check against rapid restarts)
+      # Mount a volume at /data to persist across container recreations
+      - ALG_STATE_FILE=${ALG_STATE_FILE:-/tmp/animelistgen.lastrun}
 
       # AniList query settings
       - ALG_ANILIST_YEARS=${ALG_ANILIST_YEARS:-2026,2027}
@@ -27,10 +34,13 @@ services:
       # Logging
       - ALG_LOG_LEVEL=${ALG_LOG_LEVEL:-info}
 
+    # Optionally persist the state file across container recreations:
+    # volumes:
+    #   - animelistgen_data:/data
+
     # If your Docker bridge can't reach the internet (e.g. VPN/tailscale),
     # uncomment to use the host network stack:
     # network_mode: host
 
-    # Optional: mount a config file if you prefer YAML over env vars
-    # volumes:
-    #   - ./animelistgen.yaml:/etc/animelistgen/animelistgen.yaml:ro
+volumes:
+  animelistgen_data:

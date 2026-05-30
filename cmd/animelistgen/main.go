@@ -244,9 +244,35 @@ func runDaemon(configPath string, dryRun bool, outputDir string, verbose bool) e
 
 	slog.Info("daemon started",
 		"interval", cfg.Interval.Duration,
+		"run_on_start", cfg.RunOnStart,
+		"state_file", cfg.StateFile,
 		"config", cfgPath)
 
+	// On the first iteration, either run immediately (RunOnStart=true)
+	// or sleep first (RunOnStart=false). Subsequent iterations always sleep first.
+	firstSleep := !cfg.RunOnStart
+
 	for {
+		if firstSleep {
+			firstSleep = false
+			slog.Debug("run_on_start disabled, sleeping before first cycle")
+		} else {
+			// Normal sleep between cycles
+			slog.Debug("sleeping", "duration", cfg.Interval.Duration)
+			select {
+			case sig := <-sigCh:
+				slog.Info("received signal, shutting down", "signal", sig)
+				return nil
+			case <-time.After(cfg.Interval.Duration):
+			}
+		}
+
+		// Sanity check: skip if last run was within MinInterval
+		if !checkLastRun(cfg.StateFile, config.MinInterval) {
+			slog.Debug("skipping sync — last run too recent (less than MinInterval)")
+			continue
+		}
+
 		years := cfg.AniList.YearsOrDefault()
 		seasons := cfg.AniList.Season()
 
@@ -289,17 +315,7 @@ func runDaemon(configPath string, dryRun bool, outputDir string, verbose bool) e
 			slog.Warn("sync cycle had errors", "error", err)
 		} else {
 			slog.Info("sync cycle completed successfully")
-		}
-
-		// Wait for interval or signal
-		slog.Debug("sleeping", "duration", cfg.Interval.Duration)
-
-		select {
-		case sig := <-sigCh:
-			slog.Info("received signal, shutting down", "signal", sig)
-			return nil
-		case <-time.After(cfg.Interval.Duration):
-			// Continue loop
+			writeLastRun(cfg.StateFile)
 		}
 	}
 }
@@ -408,6 +424,44 @@ func setupLogging(cfg *config.Config, verbose bool) error {
 // resolveAPIKey returns the MDBList API key from config (env overrides already applied).
 func resolveAPIKey(cfg *config.Config) string {
 	return cfg.MDBListAPIKey
+}
+
+// checkLastRun returns true if at least minInterval has elapsed since the last run
+// recorded in the state file. If the file doesn't exist (first run), returns true.
+func checkLastRun(path string, minInterval time.Duration) bool {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		// File doesn't exist or can't be read — first run or stateless
+		return true
+	}
+
+	var lastRun time.Time
+	if err := lastRun.UnmarshalText(data); err != nil {
+		return true
+	}
+
+	elapsed := time.Since(lastRun)
+	if elapsed < minInterval {
+		slog.Debug("last run was too recent",
+			"last_run", lastRun,
+			"elapsed", elapsed.Round(time.Second),
+			"min_interval", minInterval)
+		return false
+	}
+	return true
+}
+
+// writeLastRun records the current timestamp in the state file.
+func writeLastRun(path string) {
+	now := time.Now()
+	data, err := now.MarshalText()
+	if err != nil {
+		slog.Debug("failed to marshal timestamp", "error", err)
+		return
+	}
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		slog.Debug("failed to write state file", "path", path, "error", err)
+	}
 }
 
 // collectErrors checks results for errors and returns a combined error if any.
