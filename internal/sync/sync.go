@@ -785,6 +785,19 @@ func (s *Syncer) syncMDBList(ctx context.Context, season string, year int, title
 						"result", searchResult.Title)
 					continue
 				}
+				// Reject matches where the result year is far older than the
+				// show's start year (e.g. 2026 reboot matching the 1994 original
+				// is technically correct but adds the wrong entry).
+				if it.show.StartDate.Year != nil && *it.show.StartDate.Year > 0 &&
+					searchResult.Year > 0 &&
+					searchResult.Year < *it.show.StartDate.Year-5 {
+					slog.Debug("rejected title search result (year mismatch)",
+						"title", displayTitle,
+						"show_year", *it.show.StartDate.Year,
+						"result_year", searchResult.Year,
+						"result", searchResult.Title)
+					continue
+				}
 				id := mdblist.ProviderIDsFromSearch(*searchResult)
 				if len(id) > 0 {
 					mdbItems = append(mdbItems, mdbItem{id: id, title: displayTitle})
