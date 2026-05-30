@@ -57,6 +57,7 @@ type Result struct {
 	NotFoundInDB     int // shows not found in MDBList database
 	SkippedDuration  int // shows skipped (duration <= 10 min)
 	SkippedExcluded  int // shows skipped (blacklisted or excluded by tag)
+	SkippedFuture    int // shows skipped (too far in the future)
 	Created          bool
 	Updated          bool
 	Error            error
@@ -505,9 +506,8 @@ func (s *Syncer) SyncSeason(ctx context.Context, season string, year int) Result
 			"season", season, "year", year, "got", len(shows), "max", s.cfg.MaxPerSeason)
 	}
 
-	// Filter out shows too far in the future (not yet indexed by MDBList)
 	var filtered []anilist.Show
-	var skippedDuration, skippedExcluded, skippedFuture int
+	var skippedDuration, skippedExcluded int
 	for _, show := range shows {
 		title := show.DisplayTitle()
 		idMal := 0
@@ -539,26 +539,16 @@ func (s *Syncer) SyncSeason(ctx context.Context, season string, year int) Result
 			continue
 		}
 
-		// Skip shows too far in the future (likely not indexed by MDBList yet)
-		if s.cfg.AheadMonths > 0 && !show.IsWithinMonths(s.cfg.AheadMonths) {
-			skippedFuture++
-			slog.Debug("skipped show (too far in the future)",
-				"title", title,
-				"startDate", show.StartDate)
-			continue
-		}
-
 		filtered = append(filtered, show)
 	}
 	shows = filtered
 
-	totalSkipped := skippedDuration + skippedExcluded + skippedFuture
+	totalSkipped := skippedDuration + skippedExcluded
 	if totalSkipped > 0 {
 		slog.Info("filtered shows",
 			"season", season, "year", year,
 			"skipped_duration", skippedDuration,
 			"skipped_excluded", skippedExcluded,
-			"skipped_future", skippedFuture,
 			"remaining", len(shows))
 	}
 
@@ -698,7 +688,7 @@ func (s *Syncer) syncMDBList(ctx context.Context, season string, year int, title
 
 	// Build items for MDBList, trying fallback if direct match fails
 	var mdbItems []mdbItem
-	var foundDirect, foundFallback, foundSearch, notFoundCount int
+	var foundDirect, foundFallback, foundSearch, notFoundCount, skippedFuture int
 
 	for i := range items {
 		it := items[i]
@@ -830,6 +820,16 @@ func (s *Syncer) syncMDBList(ctx context.Context, season string, year int, title
 			}
 		}
 
+		// If the show is too far in the future, skip without manual_match
+		// (it's expected that MDBList hasn't indexed it yet)
+		if s.cfg.AheadMonths > 0 && !it.show.IsWithinMonths(s.cfg.AheadMonths) {
+			skippedFuture++
+			slog.Debug("skipped show (too far in the future, not in MDBList yet)",
+				"title", displayTitle,
+				"idMal", it.directMAL)
+			continue
+		}
+
 		// Record as pending for manual_match.yml
 		if malID > 0 {
 			link := fmt.Sprintf("https://anilist.co/anime/%d", it.show.ID)
@@ -932,12 +932,12 @@ func (s *Syncer) syncMDBList(ctx context.Context, season string, year int, title
 			return Result{
 				Season: season, Year: year,
 				ListTitle:        title,
-				ListURL:          newList.GetURL(),
-				ShowCount:        len(shows),
-				TotalInDB:    foundDirect + foundFallback + foundSearch,
-				FoundViaFallback: foundFallback,
-				NotFoundInDB: notFoundCount,
-				Created:      true,
+				ListURL:       newList.GetURL(),
+				ShowCount:     len(shows),
+				TotalInDB:     foundDirect + foundFallback + foundSearch,
+				NotFoundInDB:  notFoundCount,
+				SkippedFuture: skippedFuture,
+				Created:       true,
 			}
 		}
 
@@ -983,12 +983,12 @@ func (s *Syncer) syncMDBList(ctx context.Context, season string, year int, title
 		return Result{
 			Season:           season,
 			Year:             year,
-			ListTitle:        title,
-			ListURL:          existing.GetURL(),
-			ShowCount:        len(shows),
+			ListTitle:    title,
+			ListURL:      existing.GetURL(),
+			ShowCount:    len(shows),
 			TotalInDB:    foundDirect + foundFallback + foundSearch,
-			FoundViaFallback: foundFallback,
 			NotFoundInDB: notFoundCount,
+			SkippedFuture: skippedFuture,
 			Updated:      removed > 0 || added > 0,
 		}
 	}
@@ -1029,14 +1029,14 @@ func (s *Syncer) syncMDBList(ctx context.Context, season string, year int, title
 
 	return Result{
 		Season:           season,
-		Year:             year,
-		ListTitle:        title,
-		ListURL:          newList.GetURL(),
-		ShowCount:        len(shows),
-		TotalInDB:    foundDirect + foundFallback + foundSearch,
-		FoundViaFallback: foundFallback,
+		Year:    year,
+		ListTitle: title,
+		ListURL:  newList.GetURL(),
+		ShowCount: len(shows),
+		TotalInDB: foundDirect + foundFallback + foundSearch,
 		NotFoundInDB: notFoundCount,
-		Created:      true,
+		SkippedFuture: skippedFuture,
+		Created:  true,
 	}
 }
 
@@ -1150,6 +1150,9 @@ func PrintResults(results []Result, dryRun bool) {
 		}
 		if r.SkippedExcluded > 0 {
 			skippedParts = append(skippedParts, fmt.Sprintf("%d blacklisted", r.SkippedExcluded))
+		}
+		if r.SkippedFuture > 0 {
+			skippedParts = append(skippedParts, fmt.Sprintf("%d future", r.SkippedFuture))
 		}
 		if r.NotFoundInDB > 0 {
 			skippedParts = append(skippedParts, fmt.Sprintf("%d not in MDB", r.NotFoundInDB))
