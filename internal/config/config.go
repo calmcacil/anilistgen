@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -240,6 +241,96 @@ func DefaultConfig() *Config {
 	}
 }
 
+// envPrefix is the prefix for all environment variable overrides.
+const envPrefix = "ALG_"
+
+// applyEnvOverrides checks environment variables and overrides config fields.
+// Nested fields use underscore separators: ALG_ANILIST_YEAR, ALG_MDBLIST_PUBLIC, etc.
+// List fields (years, seasons, blacklist) use comma-separated values.
+func (c *Config) applyEnvOverrides() {
+	// MDBList API key — also check legacy MDBLIST_API_KEY
+	if v := os.Getenv("ALG_MDBLIST_API_KEY"); v != "" {
+		c.MDBListAPIKey = v
+	} else if v := os.Getenv("MDBLIST_API_KEY"); v != "" {
+		c.MDBListAPIKey = v
+	}
+
+	if v := os.Getenv(envPrefix + "INTERVAL"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			c.Interval.Duration = d
+		}
+	}
+
+	if v := os.Getenv(envPrefix + "ANILIST_YEAR"); v != "" {
+		if y, err := strconv.Atoi(v); err == nil && y >= 0 {
+			c.AniList.Year = y
+		}
+	}
+
+	if v := os.Getenv(envPrefix + "ANILIST_YEARS"); v != "" {
+		parts := strings.Split(v, ",")
+		var years []int
+		for _, p := range parts {
+			p = strings.TrimSpace(p)
+			if p == "" {
+				continue
+			}
+			if y, err := strconv.Atoi(p); err == nil && y > 0 {
+				years = append(years, y)
+			}
+		}
+		if len(years) > 0 {
+			c.AniList.Years = years
+		}
+	}
+
+	if v := os.Getenv(envPrefix + "ANILIST_SEASONS"); v != "" {
+		parts := strings.Split(v, ",")
+		for i, p := range parts {
+			parts[i] = strings.TrimSpace(p)
+		}
+		c.AniList.Seasons = parts
+	}
+
+	if v := os.Getenv(envPrefix + "ANILIST_MAX_PER_SEASON"); v != "" {
+		if max, err := strconv.Atoi(v); err == nil && max > 0 {
+			c.AniList.MaxPerSeason = max
+		}
+	}
+
+	if v := os.Getenv(envPrefix + "ANILIST_INCLUDE_ONA"); v != "" {
+		c.AniList.IncludeONA = v == "1" || strings.EqualFold(v, "true")
+	}
+
+	if v := os.Getenv(envPrefix + "MDBLIST_TITLE_TEMPLATE"); v != "" {
+		c.MDBList.TitleTemplate = v
+	}
+
+	if v := os.Getenv(envPrefix + "MDBLIST_DESCRIPTION_TEMPLATE"); v != "" {
+		c.MDBList.DescriptionTemplate = v
+	}
+
+	if v := os.Getenv(envPrefix + "MDBLIST_PUBLIC"); v != "" {
+		c.MDBList.Public = v == "1" || strings.EqualFold(v, "true")
+	}
+
+	if v := os.Getenv(envPrefix + "MDBLIST_BLACKLIST"); v != "" {
+		parts := strings.Split(v, ",")
+		for i, p := range parts {
+			parts[i] = strings.TrimSpace(p)
+		}
+		c.MDBList.Blacklist = parts
+	}
+
+	if v := os.Getenv(envPrefix + "LOG_LEVEL"); v != "" {
+		c.Logging.Level = v
+	}
+
+	if v := os.Getenv(envPrefix + "LOG_FILE"); v != "" {
+		c.Logging.File = v
+	}
+}
+
 // Load reads a config from the given path. If path is empty, it searches
 // default locations: ./animelistgen.yaml, $XDG_CONFIG_HOME/animelistgen/animelistgen.yaml
 func Load(path string) (*Config, string, error) {
@@ -256,6 +347,7 @@ func Load(path string) (*Config, string, error) {
 			continue
 		}
 		cfg.FillDefaults()
+		cfg.applyEnvOverrides()
 		return cfg, p, nil
 	}
 

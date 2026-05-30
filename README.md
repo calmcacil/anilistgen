@@ -47,8 +47,10 @@ animelistgen validate     Validate config and API connectivity
 
 ## Configuration
 
-The tool reads `animelistgen.yaml` from `./`, then
-`~/.config/animelistgen/animelistgen.yaml`, or any path passed via `-config`.
+The tool reads config from these sources (later overrides earlier):
+1. Config file: `./animelistgen.yaml` → `~/.config/animelistgen/animelistgen.yaml`
+2. CLI flag: `-config PATH`
+3. **Environment variables** — every setting has an `ALG_` prefixed env var
 
 Run `animelistgen init-config` to generate a default file with all options
 documented inline. Key settings:
@@ -66,8 +68,26 @@ mdblist:
   blacklist: []              # Titles or MAL IDs to skip
 ```
 
-The API key can also be set via the `MDBLIST_API_KEY` environment variable,
-which takes precedence when the config value is empty.
+### Environment variables
+
+Every config field can be set via `ALG_` prefixed env vars — no config file
+needed. This is especially useful for Docker.
+
+| Env var | Maps to | Example |
+|---|---|---|
+| `ALG_MDBLIST_API_KEY` | `mdblist_api_key` | `abc123` |
+| `ALG_INTERVAL` | `interval` | `24h` |
+| `ALG_ANILIST_YEARS` | `anilist.years` | `2026,2027` |
+| `ALG_ANILIST_SEASONS` | `anilist.seasons` | `winter,spring` |
+| `ALG_ANILIST_MAX_PER_SEASON` | `anilist.max_per_season` | `100` |
+| `ALG_ANILIST_INCLUDE_ONA` | `anilist.include_ona` | `true` |
+| `ALG_MDBLIST_TITLE_TEMPLATE` | `mdblist.title_template` | `Anime {season} {year}` |
+| `ALG_MDBLIST_DESCRIPTION_TEMPLATE` | `mdblist.description_template` | `...` |
+| `ALG_MDBLIST_PUBLIC` | `mdblist.public` | `true` |
+| `ALG_MDBLIST_BLACKLIST` | `mdblist.blacklist` | `One Piece,57658` |
+| `ALG_LOG_LEVEL` | `logging.level` | `info` |
+
+Legacy `MDBLIST_API_KEY` is still supported as a fallback for the API key.
 
 ## MDBList plan limits
 
@@ -97,11 +117,39 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now animelistgen.timer
 ```
 
-### Daemon via Docker
+### Docker (ghcr.io)
+
+A prebuilt image is available at `ghcr.io/calmcacil/animelistgen`.
+Every push to `master` and every semver tag rebuilds it automatically.
+
+**Daemon mode** (default):
+
+```bash
+docker run -d --name animelistgen --restart unless-stopped \
+  -e ALG_MDBLIST_API_KEY=your_key_here \
+  -e ALG_INTERVAL=24h \
+  -e ALG_ANILIST_YEARS=2026,2027 \
+  ghcr.io/calmcacil/animelistgen:latest
+```
+
+**One-shot mode**:
+
+```bash
+docker run --rm \
+  -e ALG_MDBLIST_API_KEY=your_key_here \
+  -e ALG_INTERVAL=0 \
+  ghcr.io/calmcacil/animelistgen:latest animelistgen
+```
+
+**Using docker-compose** (edit `docker-compose.yml` or set env in `.env`):
 
 ```bash
 docker compose up -d
 ```
+
+All configuration is via environment variables — no config file mount required.
+If you prefer, you can mount a YAML config at `/etc/animelistgen/animelistgen.yaml`
+and omit the env vars.
 
 ## Output modes
 

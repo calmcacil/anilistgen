@@ -96,7 +96,7 @@ func run() error {
 		return runValidate(configPath, verbose)
 	case "daemon":
 		return runDaemon(configPath, dryRun, outputDir, verbose)
-	case "", "oneshot":
+	case "", "oneshot", "animelistgen":
 		return runOneshot(configPath, dryRun, outputDir, verbose)
 	default:
 		return newExitError(fmt.Sprintf("unknown subcommand: %q; see animelistgen -h", subcommand), 2)
@@ -405,12 +405,9 @@ func setupLogging(cfg *config.Config, verbose bool) error {
 	return logging.Setup(level, cfg.Logging.File)
 }
 
-// resolveAPIKey returns the MDBList API key from config or env var.
+// resolveAPIKey returns the MDBList API key from config (env overrides already applied).
 func resolveAPIKey(cfg *config.Config) string {
-	if cfg.MDBListAPIKey != "" {
-		return cfg.MDBListAPIKey
-	}
-	return os.Getenv("MDBLIST_API_KEY")
+	return cfg.MDBListAPIKey
 }
 
 // collectErrors checks results for errors and returns a combined error if any.

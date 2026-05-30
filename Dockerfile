@@ -4,7 +4,7 @@ WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 go build -o /usr/local/bin/animelistgen ./cmd/animelistgen
+RUN CGO_ENABLED=0 go build -o /usr/local/bin/animelistgen -ldflags='-s -w' ./cmd/animelistgen
 
 FROM alpine:3.21
 
