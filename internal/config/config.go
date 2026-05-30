@@ -49,6 +49,11 @@ type AniListConfig struct {
 	MaxPerSeason int `yaml:"max_per_season"`
 	// IncludeONA includes ONA format alongside TV. Default: true.
 	IncludeONA bool `yaml:"include_ona"`
+	// FallbackRelationTypes controls which AniList relation types to follow
+	// when a show is not found in MDBList by its direct MAL ID.
+	// Only matching relation types are used as fallback.
+	// Default: ["PREQUEL", "PARENT"]. Add "ADAPTATION" or "SIDE_STORY" for broader matching.
+	FallbackRelationTypes []string `yaml:"fallback_relation_types"`
 }
 
 // MDBListConfig holds list creation settings.
@@ -178,6 +183,9 @@ func (c *Config) FillDefaults() {
 	if c.AniList.MaxPerSeason <= 0 {
 		c.AniList.MaxPerSeason = DefaultMaxPerSeason
 	}
+	if c.AniList.FallbackRelationTypes == nil {
+		c.AniList.FallbackRelationTypes = []string{"PREQUEL", "PARENT"}
+	}
 	if c.MDBList.TitleTemplate == "" {
 		c.MDBList.TitleTemplate = DefaultTitleTemplate
 	}
@@ -237,11 +245,12 @@ func DefaultConfig() *Config {
 		RunOnStart:    true,
 		StateFile:     DefaultStateFile,
 		AniList: AniListConfig{
-			Year:         0,
-			Years:        nil,
-			Seasons:      []string{"all"},
-			MaxPerSeason: DefaultMaxPerSeason,
-			IncludeONA:   true,
+			Year:                  0,
+			Years:                 nil,
+			Seasons:               []string{"all"},
+			MaxPerSeason:          DefaultMaxPerSeason,
+			IncludeONA:            true,
+			FallbackRelationTypes: []string{"PREQUEL", "PARENT"},
 		},
 		MDBList: MDBListConfig{
 			TitleTemplate:       DefaultTitleTemplate,
@@ -314,6 +323,14 @@ func (c *Config) applyEnvOverrides() {
 
 	if v := os.Getenv(envPrefix + "ANILIST_INCLUDE_ONA"); v != "" {
 		c.AniList.IncludeONA = v == "1" || strings.EqualFold(v, "true")
+	}
+
+	if v := os.Getenv(envPrefix + "ANILIST_FALLBACK_RELATIONS"); v != "" {
+		parts := strings.Split(v, ",")
+		for i, p := range parts {
+			parts[i] = strings.TrimSpace(p)
+		}
+		c.AniList.FallbackRelationTypes = parts
 	}
 
 	if v := os.Getenv(envPrefix + "MDBLIST_TITLE_TEMPLATE"); v != "" {

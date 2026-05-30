@@ -75,14 +75,15 @@ type Syncer struct {
 
 // SyncConfig holds the parameters for a sync operation.
 type SyncConfig struct {
-	MaxPerSeason        int
-	IncludeONA          bool
-	TitleTemplate       string
-	DescriptionTemplate string
-	Public              bool
-	DryRun              bool
-	OutputDir           string
-	Blacklist           []string
+	MaxPerSeason            int
+	IncludeONA              bool
+	TitleTemplate           string
+	DescriptionTemplate     string
+	Public                  bool
+	DryRun                  bool
+	OutputDir               string
+	Blacklist               []string
+	FallbackRelationTypes   []string
 }
 
 // isBlacklisted checks if a show should be skipped.
@@ -277,16 +278,18 @@ func (s *Syncer) syncMDBList(ctx context.Context, season string, year int, title
 
 	items := make([]showItem, len(shows))
 	allMALIDs := make(map[int]bool) // dedup set
-	for i, s := range shows {
-		items[i] = showItem{show: s}
-		if s.IDMal != nil && *s.IDMal > 0 {
-			items[i].directMAL = *s.IDMal
-			allMALIDs[*s.IDMal] = true
+	for i, sh := range shows {
+		items[i] = showItem{show: sh}
+		if sh.IDMal != nil && *sh.IDMal > 0 {
+			items[i].directMAL = *sh.IDMal
+			allMALIDs[*sh.IDMal] = true
 		}
-		// Also collect the PREQUEL MAL ID for fallback (only prequel, not
-		// ADAPTATION/SIDE_STORY/SPIN_OFF which would add wrong items).
-		if p := s.PrequelMALID(); p != nil && *p > 0 && *p != items[i].directMAL {
-			allMALIDs[*p] = true
+		// Also collect fallback relation MAL IDs (e.g. PREQUEL, PARENT)
+		// based on the configured FallbackRelationTypes.
+		for _, relID := range sh.RelationMALIDsByType(s.cfg.FallbackRelationTypes) {
+			if relID > 0 && relID != items[i].directMAL {
+				allMALIDs[relID] = true
+			}
 		}
 	}
 
@@ -332,11 +335,13 @@ func (s *Syncer) syncMDBList(ctx context.Context, season string, year int, title
 			}
 		}
 
-		// Direct MAL ID not found — try PREQUEL MAL ID as fallback
-		// We only use PREQUEL, not ADAPTATION/SIDE_STORY/SPIN_OFF, because
-		// those would match the wrong media (e.g. a manga instead of an anime).
-		if p := it.show.PrequelMALID(); p != nil && *p > 0 && *p != it.directMAL {
-			if info, ok := malInfoMap[*p]; ok {
+		// Direct MAL ID not found — try fallback relation MAL IDs
+		// based on configured FallbackRelationTypes.
+		for _, relID := range it.show.RelationMALIDsByType(s.cfg.FallbackRelationTypes) {
+			if relID == it.directMAL {
+				continue
+			}
+			if info, ok := malInfoMap[relID]; ok {
 				id := map[string]any{}
 				if info.IDs.IMDB != "" {
 					id["imdb"] = info.IDs.IMDB
@@ -347,14 +352,14 @@ func (s *Syncer) syncMDBList(ctx context.Context, season string, year int, title
 				}
 				mdbItems = append(mdbItems, mdbItem{id: id, title: displayTitle})
 				items[i].found = true
-				items[i].fallbackID = *p
+				items[i].fallbackID = relID
 				foundFallback++
-				slog.Debug("matched via prequel fallback",
+				slog.Debug("matched via relation fallback",
 					"title", displayTitle,
 					"directMAL", it.directMAL,
-					"fallbackMAL", *p,
+					"fallbackMAL", relID,
 					"fallbackTitle", info.Title)
-				continue
+				break
 			}
 		}
 

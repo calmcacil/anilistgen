@@ -61,18 +61,32 @@ func (s Show) PrequelMALID() *int {
 	return nil
 }
 
-// AllRelationMALIDs returns all non-nil MAL IDs from relations.
-func (s Show) AllRelationMALIDs() []int {
-	if s.Relations == nil {
+// RelationMALIDsByType returns all non-nil MAL IDs from relations matching
+// the given relation types (e.g. "PREQUEL", "ADAPTATION", "SIDE_STORY").
+// If types is empty, no relations are returned (safe default).
+func (s Show) RelationMALIDsByType(types []string) []int {
+	if s.Relations == nil || len(types) == 0 {
 		return nil
 	}
+
+	typeSet := make(map[string]bool, len(types))
+	for _, t := range types {
+		typeSet[t] = true
+	}
+
 	var ids []int
 	for _, e := range s.Relations.Edges {
-		if e.Node.IDMal != nil && *e.Node.IDMal > 0 {
+		if typeSet[e.RelationType] && e.Node.IDMal != nil && *e.Node.IDMal > 0 {
 			ids = append(ids, *e.Node.IDMal)
 		}
 	}
 	return ids
+}
+
+// AllRelationMALIDs returns all non-nil MAL IDs from relations.
+// Deprecated: use RelationMALIDsByType instead.
+func (s Show) AllRelationMALIDs() []int {
+	return s.RelationMALIDsByType([]string{"PREQUEL", "SEQUEL", "ADAPTATION", "SIDE_STORY", "SPIN_OFF", "ALTERNATIVE", "SUMMARY", "PARENT", "CHARACTER", "OTHER"})
 }
 
 // SkipByDuration returns true if the show should be skipped because its

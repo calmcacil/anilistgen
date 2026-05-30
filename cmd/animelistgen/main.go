@@ -166,13 +166,14 @@ func runOneshot(configPath string, dryRun bool, outputDir string, verbose bool) 
 	}
 
 	syncCfg := sync.SyncConfig{
-		MaxPerSeason:        cfg.AniList.MaxPerSeason,
-		IncludeONA:          cfg.AniList.IncludeONA,
-		TitleTemplate:       cfg.MDBList.TitleTemplate,
-		DescriptionTemplate: cfg.MDBList.DescriptionTemplate,
-		Public:              cfg.MDBList.Public,
-		DryRun:              dryRun,
-		OutputDir:           outputDir,
+		MaxPerSeason:          cfg.AniList.MaxPerSeason,
+		IncludeONA:            cfg.AniList.IncludeONA,
+		TitleTemplate:         cfg.MDBList.TitleTemplate,
+		DescriptionTemplate:   cfg.MDBList.DescriptionTemplate,
+		Public:                cfg.MDBList.Public,
+		DryRun:                dryRun,
+		OutputDir:             outputDir,
+		FallbackRelationTypes: cfg.AniList.FallbackRelationTypes,
 	}
 
 	syncer := sync.New(aniClient, mdbClient, syncCfg)
@@ -225,12 +226,13 @@ func runDaemon(configPath string, dryRun bool, outputDir string, verbose bool) e
 	mdbClient := mdblist.New(apiKey)
 
 	syncCfg := sync.SyncConfig{
-		MaxPerSeason:        cfg.AniList.MaxPerSeason,
-		IncludeONA:          cfg.AniList.IncludeONA,
-		TitleTemplate:       cfg.MDBList.TitleTemplate,
-		DescriptionTemplate: cfg.MDBList.DescriptionTemplate,
-		Public:              cfg.MDBList.Public,
-		DryRun:              dryRun,
+		MaxPerSeason:          cfg.AniList.MaxPerSeason,
+		IncludeONA:            cfg.AniList.IncludeONA,
+		TitleTemplate:         cfg.MDBList.TitleTemplate,
+		DescriptionTemplate:   cfg.MDBList.DescriptionTemplate,
+		Public:                cfg.MDBList.Public,
+		DryRun:                dryRun,
+		FallbackRelationTypes: cfg.AniList.FallbackRelationTypes,
 	}
 
 	syncer := sync.New(aniClient, mdbClient, syncCfg)
