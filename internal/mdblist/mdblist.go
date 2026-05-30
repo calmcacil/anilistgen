@@ -180,18 +180,6 @@ func (c *Client) CreateList(ctx context.Context, name, description string, publi
 	return &list, nil
 }
 
-// UpdateListName updates a list's name.
-func (c *Client) UpdateListName(ctx context.Context, listID int, name string) error {
-	c.throttle()
-	u := fmt.Sprintf("%s/lists/%d?apikey=%s", apiBase, listID, url.QueryEscape(c.apiKey))
-	payload := map[string]string{"name": name}
-	body, err := json.Marshal(payload)
-	if err != nil {
-		return fmt.Errorf("marshal payload: %w", err)
-	}
-	return c.doMutation(ctx, http.MethodPut, u, body, nil)
-}
-
 // AddItems adds items to a static list by provider IDs (e.g. imdb, trakt, tmdb, tvdb).
 // items is a map like {"imdb": "tt0903747"} or {"tmdb": 1396}.
 func (c *Client) AddItems(ctx context.Context, listID int, items []map[string]any) error {
@@ -225,20 +213,6 @@ func (c *Client) RemoveItems(ctx context.Context, listID int, items []map[string
 	}
 
 	return c.doMutation(ctx, http.MethodPost, u, body, nil)
-}
-
-// ReplaceItems replaces all items by removing existing and adding new ones.
-func (c *Client) ReplaceItems(ctx context.Context, listID int, items []map[string]any) error {
-	// MDBList doesn't support a direct replace. We remove all existing items first,
-	// then add the new ones. Since removing all items would require knowing their IDs,
-	// and the API supports remove by ID format, we'll do a two-step:
-	// Remove all then add all.
-	// However, the remove endpoint also uses provider IDs. We can't remove all at once
-	// without knowing what's in the list.
-	//
-	// For our use case (seasonal lists), lists are either new (empty) or need full replacement.
-	// The simplest approach: delete and recreate. This avoids the complexity of sync.
-	return fmt.Errorf("not supported directly; use DeleteAndRecreate")
 }
 
 // DeleteAndRecreate deletes and recreates a list with new items.
@@ -317,40 +291,6 @@ func (c *Client) BatchLookupByMAL(ctx context.Context, malIDs []int) (map[int]Me
 	for _, m := range results {
 		if m.IDs.MAL != 0 {
 			resultMap[m.IDs.MAL] = m
-		}
-	}
-
-	return resultMap, nil
-}
-
-// BatchLookupByIMDB looks up media by a list of IMDB IDs.
-func (c *Client) BatchLookupByIMDB(ctx context.Context, imdbIDs []string) (map[string]MediaInfo, error) {
-	if len(imdbIDs) == 0 {
-		return map[string]MediaInfo{}, nil
-	}
-
-	c.throttle()
-
-	payload := map[string]any{
-		"ids": imdbIDs,
-	}
-
-	body, err := json.Marshal(payload)
-	if err != nil {
-		return nil, fmt.Errorf("marshal payload: %w", err)
-	}
-
-	u := fmt.Sprintf("%s/imdb/show?apikey=%s", apiBase, url.QueryEscape(c.apiKey))
-
-	var results []MediaInfo
-	if err := c.doRequest(ctx, http.MethodPost, u, body, &results); err != nil {
-		return nil, fmt.Errorf("batch lookup by imdb: %w", err)
-	}
-
-	resultMap := make(map[string]MediaInfo, len(results))
-	for _, m := range results {
-		if m.IDs.IMDB != "" {
-			resultMap[m.IDs.IMDB] = m
 		}
 	}
 

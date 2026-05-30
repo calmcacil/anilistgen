@@ -144,30 +144,6 @@ func (a *AniListConfig) Season() []string {
 	return seasons
 }
 
-// IsBlacklisted checks if a show (by display title or MAL ID) is in the blacklist.
-// Numeric entries are treated as MAL IDs; everything else is matched
-// case-insensitively as a substring of the display title.
-func (m *MDBListConfig) IsBlacklisted(title string, idMal int) bool {
-	for _, entry := range m.Blacklist {
-		if entry == "" {
-			continue
-		}
-		// Check if entry is a numeric MAL ID
-		var malID int
-		if _, err := fmt.Sscanf(entry, "%d", &malID); err == nil && malID > 0 {
-			if malID == idMal {
-				return true
-			}
-			continue
-		}
-		// Text entry → case-insensitive substring match against title
-		if strings.Contains(strings.ToLower(title), strings.ToLower(entry)) {
-			return true
-		}
-	}
-	return false
-}
-
 // AllSeasons returns all four seasons in calendar order.
 func AllSeasons() []string {
 	return []string{"WINTER", "SPRING", "SUMMER", "FALL"}

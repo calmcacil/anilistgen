@@ -156,9 +156,11 @@ func runOneshot(configPath string, dryRun bool, outputDir string, verbose bool) 
 		return err
 	}
 
-	if err := setupLogging(cfg, verbose); err != nil {
+	closeLog, err := setupLogging(cfg, verbose)
+	if err != nil {
 		return err
 	}
+	defer closeLog()
 
 	apiKey := resolveAPIKey(cfg)
 
@@ -219,9 +221,11 @@ func runDaemon(configPath string, dryRun bool, outputDir string, verbose bool) e
 		return err
 	}
 
-	if err := setupLogging(cfg, verbose); err != nil {
+	closeLog, err := setupLogging(cfg, verbose)
+	if err != nil {
 		return err
 	}
+	defer closeLog()
 
 	if cfg.Interval.Duration == 0 {
 		return newExitError("interval must be non-zero in daemon mode; set it in "+cfgPath, 1)
@@ -255,9 +259,9 @@ func runDaemon(configPath string, dryRun bool, outputDir string, verbose bool) e
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Signal handling
+	// Signal handling — also listen for SIGHUP for config/log reload.
 	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
 
 	slog.Info("daemon started",
 		"interval", cfg.Interval.Duration,
@@ -269,12 +273,62 @@ func runDaemon(configPath string, dryRun bool, outputDir string, verbose bool) e
 	// or sleep through the interval first (RunOnStart=false).
 	mustSleep := !cfg.RunOnStart
 
+	// reloadConfig reloads the YAML file, rebuilds the syncer, and reopens
+	// the log file. Called on SIGHUP.
+	reloadConfig := func() {
+		slog.Info("SIGHUP received, reloading config")
+		newCfg, newCfgPath, err := config.Load(configPath)
+		if err != nil {
+			slog.Warn("config reload failed, keeping current config", "error", err)
+			return
+		}
+
+		// Reopen log file with new config
+		newClose, logErr := setupLogging(newCfg, verbose)
+		if logErr != nil {
+			slog.Warn("log reopen after reload failed, keeping old logger", "error", logErr)
+		} else {
+			closeLog() // close old log file
+			closeLog = newClose
+		}
+
+		// Rebuild syncer with new config
+		apiKey := resolveAPIKey(newCfg)
+		var mdbClient *mdblist.Client
+		if apiKey != "" {
+			mdbClient = mdblist.New(apiKey)
+		}
+
+		newSyncCfg := sync.SyncConfig{
+			MaxPerSeason:          newCfg.AniList.MaxPerSeason,
+			IncludeONA:            newCfg.AniList.IncludeONA,
+			WinterOverflow:        newCfg.AniList.WinterOverflow,
+			TitleTemplate:         newCfg.MDBList.TitleTemplate,
+			DescriptionTemplate:   newCfg.MDBList.DescriptionTemplate,
+			Public:                newCfg.MDBList.Public,
+			DryRun:                dryRun,
+			FallbackRelationTypes: newCfg.AniList.FallbackRelationTypes,
+			ExcludeTags:           newCfg.AniList.ExcludeTags,
+			ListCachePath:         listCachePath(newCfg.StateFile),
+		}
+
+		cfg = newCfg
+		cfgPath = newCfgPath
+		syncer = sync.New(aniClient, mdbClient, newSyncCfg)
+		slog.Info("config reloaded", "config", cfgPath)
+	}
+
 	for {
 		if mustSleep {
 			mustSleep = false
 			slog.Debug("run_on_start disabled, sleeping before first cycle")
 			select {
 			case sig := <-sigCh:
+				if sig == syscall.SIGHUP {
+					reloadConfig()
+					mustSleep = true // restart sleep after reload
+					continue
+				}
 				slog.Info("received signal, shutting down", "signal", sig)
 				return nil
 			case <-time.After(cfg.Interval.Duration):
@@ -284,8 +338,15 @@ func runDaemon(configPath string, dryRun bool, outputDir string, verbose bool) e
 			slog.Debug("sleeping", "duration", cfg.Interval.Duration)
 			select {
 			case sig := <-sigCh:
+				if sig == syscall.SIGHUP {
+					reloadConfig()
+					continue
+				}
 				slog.Info("received signal, shutting down", "signal", sig)
 				return nil
+			case <-ctx.Done():
+				slog.Info("context cancelled, shutting down")
+				return ctx.Err()
 			case <-time.After(cfg.Interval.Duration):
 			}
 		}
@@ -350,9 +411,11 @@ func runValidate(configPath string, verbose bool) error {
 		return fmt.Errorf("config: %w", err)
 	}
 
-	if err := setupLogging(cfg, verbose); err != nil {
+	closeLog, err := setupLogging(cfg, verbose)
+	if err != nil {
 		return err
 	}
+	defer closeLog()
 
 	fmt.Printf("Config: %s\n", cfgPath)
 	fmt.Printf("  Years: %v\n", cfg.AniList.YearsOrDefault())
@@ -435,8 +498,9 @@ func runInitConfig(cliPath string, args []string) error {
 	return nil
 }
 
-// setupLogging configures the slog logger.
-func setupLogging(cfg *config.Config, verbose bool) error {
+// setupLogging configures the slog logger and returns a close function
+// to flush/close the underlying log file (no-op for stderr).
+func setupLogging(cfg *config.Config, verbose bool) (func(), error) {
 	level := cfg.Logging.Level
 	if verbose {
 		level = "debug"

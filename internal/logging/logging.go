@@ -9,7 +9,8 @@ import (
 
 // Setup configures the slog default logger based on the given level and
 // optional file path. If file is empty, logs go to stderr.
-func Setup(levelStr, file string) error {
+// Returns a close function to cleanly shut down the logger (close log file).
+func Setup(levelStr, file string) (func(), error) {
 	var level slog.Level
 	switch strings.ToLower(levelStr) {
 	case "debug":
@@ -25,12 +26,16 @@ func Setup(levelStr, file string) error {
 	}
 
 	var writer io.Writer = os.Stderr
+	var closer func()
 	if file != "" {
 		f, err := os.OpenFile(file, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		writer = f
+		closer = func() { f.Close() }
+	} else {
+		closer = func() {} // no-op for stderr
 	}
 
 	handler := slog.NewTextHandler(writer, &slog.HandlerOptions{
@@ -38,5 +43,5 @@ func Setup(levelStr, file string) error {
 	})
 
 	slog.SetDefault(slog.New(handler))
-	return nil
+	return closer, nil
 }

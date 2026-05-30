@@ -14,7 +14,6 @@ import (
 const (
 	apiBase  = "https://graphql.anilist.co"
 	maxRetry = 3
-	pageSize = 100
 )
 
 // RelationEdge represents a related media entry.
@@ -54,20 +53,6 @@ type RelationBlock struct {
 	Edges []RelationEdge `json:"edges"`
 }
 
-// PrequelMALID returns the MAL ID of the first PREQUEL relation, if any.
-// This is used to trace a seasonal entry back to an earlier season.
-func (s Show) PrequelMALID() *int {
-	if s.Relations == nil {
-		return nil
-	}
-	for _, e := range s.Relations.Edges {
-		if e.RelationType == "PREQUEL" && e.Node.IDMal != nil {
-			return e.Node.IDMal
-		}
-	}
-	return nil
-}
-
 // RelationMALIDsByType returns all non-nil MAL IDs from relations matching
 // the given relation types (e.g. "PREQUEL", "ADAPTATION", "SIDE_STORY").
 // If types is empty, no relations are returned (safe default).
@@ -88,12 +73,6 @@ func (s Show) RelationMALIDsByType(types []string) []int {
 		}
 	}
 	return ids
-}
-
-// AllRelationMALIDs returns all non-nil MAL IDs from relations.
-// Deprecated: use RelationMALIDsByType instead.
-func (s Show) AllRelationMALIDs() []int {
-	return s.RelationMALIDsByType([]string{"PREQUEL", "SEQUEL", "ADAPTATION", "SIDE_STORY", "SPIN_OFF", "ALTERNATIVE", "SUMMARY", "PARENT", "CHARACTER", "OTHER"})
 }
 
 // SkipByDuration returns true if the show should be skipped because its
