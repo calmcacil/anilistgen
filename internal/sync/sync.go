@@ -227,7 +227,7 @@ func (s *Syncer) hasExcludedTag(show anilist.Show) bool {
 	return false
 }
 
-const maxChainDepth = 3
+const maxChainDepth = 10
 
 // stopWords are common words stripped from keyword relevance checks.
 var stopWords = map[string]bool{
