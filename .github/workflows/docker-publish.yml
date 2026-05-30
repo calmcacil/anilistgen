@@ -2,7 +2,7 @@ name: Build and publish Docker image
 
 on:
   push:
-    branches: [master]
+    branches: [main]
     paths:
       - 'cmd/**'
       - 'internal/**'
@@ -12,7 +12,7 @@ on:
       - '.github/workflows/docker-publish.yml'
     tags: ["v*"]
   pull_request:
-    branches: [master]
+    branches: [main]
     paths:
       - 'cmd/**'
       - 'internal/**'
@@ -30,7 +30,31 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  test:
+    if: |
+      github.ref_type == 'branch' ||
+      (github.ref_type == 'tag' && github.actor != 'github-actions[bot]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: stable
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        run: go test ./...
+
+      - name: Build
+        run: go build ./cmd/anilistgen
+
   build:
+    needs: [test]
     # Skip auto-created tags (they were already built by the branch push).
     # Only build manually-pushed tags and branch pushes.
     if: |
