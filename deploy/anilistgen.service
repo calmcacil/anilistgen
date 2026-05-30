@@ -1,0 +1,12 @@
+[Unit]
+Description=anilistgen — seasonal anime MDBList sync
+Documentation=https://github.com/calmcacil/anilistgen
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/anilistgen -c /etc/anilistgen/anilistgen.yaml
+User=anilistgen
+Group=anilistgen
+Restart=no

@@ -12,11 +12,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/calmcacil/animelistgen/internal/anilist"
-	"github.com/calmcacil/animelistgen/internal/config"
-	"github.com/calmcacil/animelistgen/internal/logging"
-	"github.com/calmcacil/animelistgen/internal/mdblist"
-	"github.com/calmcacil/animelistgen/internal/sync"
+	"github.com/calmcacil/anilistgen/internal/anilist"
+	"github.com/calmcacil/anilistgen/internal/config"
+	"github.com/calmcacil/anilistgen/internal/logging"
+	"github.com/calmcacil/anilistgen/internal/mdblist"
+	"github.com/calmcacil/anilistgen/internal/sync"
 )
 
 const version = "0.1.0"
@@ -56,7 +56,7 @@ func run() error {
 		help       bool
 	)
 
-	flags := flag.NewFlagSet("animelistgen", flag.ContinueOnError)
+	flags := flag.NewFlagSet("anilistgen", flag.ContinueOnError)
 	flags.StringVar(&configPath, "config", "", "path to config file")
 	flags.StringVar(&configPath, "c", "", "path to config file (shorthand)")
 	flags.BoolVar(&dryRun, "dry-run", false, "print what would be done without making API calls")
@@ -96,21 +96,21 @@ func run() error {
 		return runValidate(configPath, verbose)
 	case "daemon":
 		return runDaemon(configPath, dryRun, outputDir, verbose)
-	case "", "oneshot", "animelistgen":
+	case "", "oneshot", "anilistgen":
 		return runOneshot(configPath, dryRun, outputDir, verbose)
 	default:
-		return newExitError(fmt.Sprintf("unknown subcommand: %q; see animelistgen -h", subcommand), 2)
+		return newExitError(fmt.Sprintf("unknown subcommand: %q; see anilistgen -h", subcommand), 2)
 	}
 }
 
 func printUsage() {
-	fmt.Println(`animelistgen — generate seasonal anime lists on MDBList from AniList
+	fmt.Println(`anilistgen — generate seasonal anime lists on MDBList from AniList
 
 Usage:
-  animelistgen [flags]                    Oneshot mode (default)
-  animelistgen daemon [flags]             Background daemon mode
-  animelistgen init-config [flags]        Generate default config file
-  animelistgen validate [flags]           Validate config and API connectivity
+  anilistgen [flags]                    Oneshot mode (default)
+  anilistgen daemon [flags]             Background daemon mode
+  anilistgen init-config [flags]        Generate default config file
+  anilistgen validate [flags]           Validate config and API connectivity
 
 Global flags:
   -config, -c PATH      Path to config file (overrides default search paths)

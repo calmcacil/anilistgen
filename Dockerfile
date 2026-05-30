@@ -4,13 +4,13 @@ WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 go build -o /usr/local/bin/animelistgen -ldflags='-s -w' ./cmd/animelistgen
+RUN CGO_ENABLED=0 go build -o /usr/local/bin/anilistgen -ldflags='-s -w' ./cmd/anilistgen
 
 FROM alpine:3.21
 
 RUN apk add --no-cache ca-certificates tzdata
 
-COPY --from=builder /usr/local/bin/animelistgen /usr/local/bin/animelistgen
+COPY --from=builder /usr/local/bin/anilistgen /usr/local/bin/anilistgen
 
-ENTRYPOINT ["animelistgen"]
+ENTRYPOINT ["anilistgen"]
 CMD ["daemon"]

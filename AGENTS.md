@@ -1,4 +1,4 @@
-# animelistgen — Agent Guide
+# anilistgen — Agent Guide
 
 ## Overview
 
@@ -9,7 +9,7 @@ that has no built-in "current season" source).
 ## Architecture
 
 ```
-cmd/animelistgen/main.go    — entry point, subcommand dispatch
+cmd/anilistgen/main.go    — entry point, subcommand dispatch
 internal/config/             — YAML config loading, validation, init-config gen
 internal/anilist/            — AniList GraphQL client (retry/backoff)
 internal/mdblist/            — MDBList API client (list CRUD, batch lookup)
@@ -23,10 +23,10 @@ deploy/                      — systemd unit/timer, Dockerfile, docker-compose
 
 | Command | Mode | Description |
 |---|---|---|
-| `animelistgen` | oneshot | Process all configured seasons, print URLs |
-| `animelistgen daemon` | daemon | Loop at config interval, graceful shutdown on SIGINT/SIGTERM |
-| `animelistgen init-config` | init | Generate default YAML config |
-| `animelistgen validate` | validate | Check config + API connectivity to AniList and MDBList |
+| `anilistgen` | oneshot | Process all configured seasons, print URLs |
+| `anilistgen daemon` | daemon | Loop at config interval, graceful shutdown on SIGINT/SIGTERM |
+| `anilistgen init-config` | init | Generate default YAML config |
+| `anilistgen validate` | validate | Check config + API connectivity to AniList and MDBList |
 
 ## External APIs
 
@@ -93,25 +93,25 @@ For each season/year:
 
 Location (searched in order):
 1. `-config` CLI flag path
-2. `./animelistgen.yaml`
-3. `$XDG_CONFIG_HOME/animelistgen/animelistgen.yaml` (defaults to `~/.config/...`)
+2. `./anilistgen.yaml`
+3. `$XDG_CONFIG_HOME/anilistgen/anilistgen.yaml` (defaults to `~/.config/...`)
 
 Unknown top-level keys produce a warning on stderr but don't prevent startup.
 
 ## Testing
 
 ```bash
-go build ./cmd/animelistgen
+go build ./cmd/anilistgen
 go vet ./...
-./animelistgen -dry-run        # fetches AniList, no MDBList writes
-./animelistgen -output /tmp/x  # writes JSON files instead of MDBList calls
-./animelistgen validate        # checks config + API connectivity
+./anilistgen -dry-run        # fetches AniList, no MDBList writes
+./anilistgen -output /tmp/x  # writes JSON files instead of MDBList calls
+./anilistgen validate        # checks config + API connectivity
 ```
 
 ## Security Notes
 
-- **API keys in config** — The config file (`animelistgen.yaml`) is in
-  `.gitignore` to prevent accidental commits. Use `animelistgen.yaml.example`
+- **API keys in config** — The config file (`anilistgen.yaml`) is in
+  `.gitignore` to prevent accidental commits. Use `anilistgen.yaml.example`
   as a template. The env var `MDBLIST_API_KEY` can also be used.
 - **No auth on AniList reads** — AniList GraphQL is public, no credentials needed.
 - **MDBList key transmitted as query param** — sent over HTTPS. Rotate if

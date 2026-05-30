@@ -1,4 +1,4 @@
-module github.com/calmcacil/animelistgen
+module github.com/calmcacil/anilistgen
 
 go 1.24.4
 

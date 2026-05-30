@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/calmcacil/animelistgen/internal/anilist"
-	"github.com/calmcacil/animelistgen/internal/mdblist"
+	"github.com/calmcacil/anilistgen/internal/anilist"
+	"github.com/calmcacil/anilistgen/internal/mdblist"
 )
 
 // ResolvedListTitle fills in placeholders in a title template.
