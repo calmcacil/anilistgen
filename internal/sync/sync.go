@@ -283,11 +283,10 @@ func (s *Syncer) syncMDBList(ctx context.Context, season string, year int, title
 			items[i].directMAL = *s.IDMal
 			allMALIDs[*s.IDMal] = true
 		}
-		// Also collect relation MAL IDs for fallback
-		for _, relID := range s.AllRelationMALIDs() {
-			if relID > 0 {
-				allMALIDs[relID] = true
-			}
+		// Also collect the PREQUEL MAL ID for fallback (only prequel, not
+		// ADAPTATION/SIDE_STORY/SPIN_OFF which would add wrong items).
+		if p := s.PrequelMALID(); p != nil && *p > 0 && *p != items[i].directMAL {
+			allMALIDs[*p] = true
 		}
 	}
 
@@ -333,34 +332,28 @@ func (s *Syncer) syncMDBList(ctx context.Context, season string, year int, title
 			}
 		}
 
-		// Direct MAL ID not found — try prequel/relation MAL IDs as fallback
-		if relIDs := it.show.AllRelationMALIDs(); len(relIDs) > 0 {
-			for _, relID := range relIDs {
-				if relID == it.directMAL {
-					continue // already tried
+		// Direct MAL ID not found — try PREQUEL MAL ID as fallback
+		// We only use PREQUEL, not ADAPTATION/SIDE_STORY/SPIN_OFF, because
+		// those would match the wrong media (e.g. a manga instead of an anime).
+		if p := it.show.PrequelMALID(); p != nil && *p > 0 && *p != it.directMAL {
+			if info, ok := malInfoMap[*p]; ok {
+				id := map[string]any{}
+				if info.IDs.IMDB != "" {
+					id["imdb"] = info.IDs.IMDB
+				} else if info.IDs.TMDB != 0 {
+					id["tmdb"] = info.IDs.TMDB
+				} else if info.IDs.TVDB != 0 {
+					id["tvdb"] = info.IDs.TVDB
 				}
-				if info, ok := malInfoMap[relID]; ok {
-					id := map[string]any{}
-					if info.IDs.IMDB != "" {
-						id["imdb"] = info.IDs.IMDB
-					} else if info.IDs.TMDB != 0 {
-						id["tmdb"] = info.IDs.TMDB
-					} else if info.IDs.TVDB != 0 {
-						id["tvdb"] = info.IDs.TVDB
-					}
-					mdbItems = append(mdbItems, mdbItem{id: id, title: displayTitle})
-					items[i].found = true
-					items[i].fallbackID = relID
-					foundFallback++
-					slog.Debug("matched via relation fallback",
-						"title", displayTitle,
-						"directMAL", it.directMAL,
-						"fallbackMAL", relID,
-						"fallbackTitle", info.Title)
-					break
-				}
-			}
-			if items[i].found {
+				mdbItems = append(mdbItems, mdbItem{id: id, title: displayTitle})
+				items[i].found = true
+				items[i].fallbackID = *p
+				foundFallback++
+				slog.Debug("matched via prequel fallback",
+					"title", displayTitle,
+					"directMAL", it.directMAL,
+					"fallbackMAL", *p,
+					"fallbackTitle", info.Title)
 				continue
 			}
 		}
