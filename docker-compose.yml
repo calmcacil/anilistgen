@@ -27,6 +27,10 @@ services:
       # Logging
       - ALG_LOG_LEVEL=${ALG_LOG_LEVEL:-info}
 
+    # If your Docker bridge can't reach the internet (e.g. VPN/tailscale),
+    # uncomment to use the host network stack:
+    # network_mode: host
+
     # Optional: mount a config file if you prefer YAML over env vars
     # volumes:
     #   - ./animelistgen.yaml:/etc/animelistgen/animelistgen.yaml:ro
