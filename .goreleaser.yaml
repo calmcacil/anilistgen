@@ -2,10 +2,6 @@ version: 2
 
 project_name: anilistgen
 
-before:
-  hooks:
-    - go mod tidy
-
 builds:
   - id: anilistgen
     main: ./cmd/anilistgen
@@ -34,9 +30,6 @@ archives:
 checksum:
   name_template: checksums.txt
 
-snapshot:
-  name_template: "{{ .Version }}-SNAPSHOT-{{ .ShortCommit }}"
-
 changelog:
   use: github
   sort: asc
@@ -55,49 +48,20 @@ release:
   prerelease: auto
   make_latest: true
 
-dockers:
-  - image_templates:
-      - "ghcr.io/calmcacil/anilistgen:{{ .Version }}-amd64"
+dockers_v2:
+  - images:
+      - ghcr.io/calmcacil/anilistgen
+    tags:
+      - "v{{ .Version }}"
+      - "{{ .Major }}.{{ .Minor }}"
+      - latest
     dockerfile: Dockerfile.goreleaser
-    use: buildx
     build_flag_templates:
-      - "--platform=linux/amd64"
       - "--label=org.opencontainers.image.created={{ .Date }}"
       - "--label=org.opencontainers.image.title={{ .ProjectName }}"
       - "--label=org.opencontainers.image.revision={{ .FullCommit }}"
       - "--label=org.opencontainers.image.version={{ .Version }}"
       - "--label=org.opencontainers.image.source=https://github.com/calmcacil/anilistgen"
-      - "--build-arg=VERSION={{ .Version }}"
     extra_files:
       - go.mod
       - go.sum
-
-  - image_templates:
-      - "ghcr.io/calmcacil/anilistgen:{{ .Version }}-arm64"
-    dockerfile: Dockerfile.goreleaser
-    use: buildx
-    build_flag_templates:
-      - "--platform=linux/arm64"
-      - "--label=org.opencontainers.image.created={{ .Date }}"
-      - "--label=org.opencontainers.image.title={{ .ProjectName }}"
-      - "--label=org.opencontainers.image.revision={{ .FullCommit }}"
-      - "--label=org.opencontainers.image.version={{ .Version }}"
-      - "--label=org.opencontainers.image.source=https://github.com/calmcacil/anilistgen"
-      - "--build-arg=VERSION={{ .Version }}"
-    extra_files:
-      - go.mod
-      - go.sum
-
-docker_manifests:
-  - name_template: ghcr.io/calmcacil/anilistgen:{{ .Version }}
-    image_templates:
-      - ghcr.io/calmcacil/anilistgen:{{ .Version }}-amd64
-      - ghcr.io/calmcacil/anilistgen:{{ .Version }}-arm64
-  - name_template: ghcr.io/calmcacil/anilistgen:latest
-    image_templates:
-      - ghcr.io/calmcacil/anilistgen:{{ .Version }}-amd64
-      - ghcr.io/calmcacil/anilistgen:{{ .Version }}-arm64
-  - name_template: ghcr.io/calmcacil/anilistgen:{{ .Major }}.{{ .Minor }}
-    image_templates:
-      - ghcr.io/calmcacil/anilistgen:{{ .Version }}-amd64
-      - ghcr.io/calmcacil/anilistgen:{{ .Version }}-arm64
