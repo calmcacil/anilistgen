@@ -249,13 +249,19 @@ func runDaemon(configPath string, dryRun bool, outputDir string, verbose bool) e
 		"config", cfgPath)
 
 	// On the first iteration, either run immediately (RunOnStart=true)
-	// or sleep first (RunOnStart=false). Subsequent iterations always sleep first.
-	firstSleep := !cfg.RunOnStart
+	// or sleep through the interval first (RunOnStart=false).
+	mustSleep := !cfg.RunOnStart
 
 	for {
-		if firstSleep {
-			firstSleep = false
+		if mustSleep {
+			mustSleep = false
 			slog.Debug("run_on_start disabled, sleeping before first cycle")
+			select {
+			case sig := <-sigCh:
+				slog.Info("received signal, shutting down", "signal", sig)
+				return nil
+			case <-time.After(cfg.Interval.Duration):
+			}
 		} else {
 			// Normal sleep between cycles
 			slog.Debug("sleeping", "duration", cfg.Interval.Duration)
