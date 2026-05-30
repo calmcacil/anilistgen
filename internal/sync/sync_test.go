@@ -243,12 +243,12 @@ func TestParseProviderID_TMDB(t *testing.T) {
 	if !ok {
 		t.Fatal("expected key 'tmdb'")
 	}
-	floatVal, ok := val.(float64)
+	intVal, ok := val.(int)
 	if !ok {
-		t.Fatalf("expected float64, got %T", val)
+		t.Fatalf("expected int, got %T", val)
 	}
-	if floatVal != 1396 {
-		t.Errorf("expected 1396, got %v", floatVal)
+	if intVal != 1396 {
+		t.Errorf("expected 1396, got %v", intVal)
 	}
 }
 
@@ -263,12 +263,12 @@ func TestParseProviderID_TVDB(t *testing.T) {
 	if !ok {
 		t.Fatal("expected key 'tvdb'")
 	}
-	floatVal, ok := val.(float64)
+	intVal, ok := val.(int)
 	if !ok {
-		t.Fatalf("expected float64, got %T", val)
+		t.Fatalf("expected int, got %T", val)
 	}
-	if floatVal != 12345 {
-		t.Errorf("expected 12345, got %v", floatVal)
+	if intVal != 12345 {
+		t.Errorf("expected 12345, got %v", intVal)
 	}
 }
 
@@ -327,14 +327,14 @@ func TestResultStruct_ZeroValues(t *testing.T) {
 	if r.FoundViaFallback != 0 {
 		t.Errorf("expected 0 FoundViaFallback, got %d", r.FoundViaFallback)
 	}
-	if r.Skipped != 0 {
-		t.Errorf("expected 0 Skipped, got %d", r.Skipped)
+	if r.NotFoundInDB != 0 {
+		t.Errorf("expected 0 NotFoundInDB, got %d", r.NotFoundInDB)
 	}
 	if r.SkippedDuration != 0 {
 		t.Errorf("expected 0 SkippedDuration, got %d", r.SkippedDuration)
 	}
-	if r.SkippedBlacklist != 0 {
-		t.Errorf("expected 0 SkippedBlacklist, got %d", r.SkippedBlacklist)
+	if r.SkippedExcluded != 0 {
+		t.Errorf("expected 0 SkippedExcluded, got %d", r.SkippedExcluded)
 	}
 	if r.Created {
 		t.Error("expected Created to be false")
