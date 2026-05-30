@@ -336,26 +336,24 @@ func (c *Config) applyEnvOverrides() {
 func Load(path string) (*Config, string, error) {
 	paths := searchPaths(path)
 
-	var lastErr error
 	for _, p := range paths {
 		cfg, err := loadFile(p)
 		if err != nil {
 			if os.IsNotExist(err) {
 				continue
 			}
-			lastErr = err
-			continue
+			return nil, "", fmt.Errorf("config error in %s: %w", p, err)
 		}
 		cfg.FillDefaults()
 		cfg.applyEnvOverrides()
 		return cfg, p, nil
 	}
 
-	if lastErr != nil {
-		return nil, "", fmt.Errorf("config error: %w", lastErr)
-	}
-
-	return nil, "", fmt.Errorf("no config file found; run 'animelistgen init-config' to create one")
+	// No config file found — fall back to defaults + env var overrides.
+	// This allows pure-env-var usage (Docker, etc.) without a config file.
+	cfg := DefaultConfig()
+	cfg.applyEnvOverrides()
+	return cfg, "", nil
 }
 
 // loadFile reads and parses a single YAML config file.
