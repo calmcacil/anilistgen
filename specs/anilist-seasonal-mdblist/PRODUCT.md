@@ -334,7 +334,7 @@ to merge December shows from the prior year.
 ## Version tracking and CI
 
 The project uses **semantic versioning** via `caarlos0/svu` and
-conventional commits. Tags are auto-created by CI on every master
+conventional commits. Tags are auto-created by CI on every main
 branch build:
 
 | Commit prefix | Version bump | Example |
