@@ -31,16 +31,23 @@ concurrency:
 
 jobs:
   build:
+    # Skip auto-created tags (they were already built by the branch push).
+    # Only build manually-pushed tags and branch pushes.
+    if: |
+      github.ref_type == 'branch' ||
+      (github.ref_type == 'tag' && github.actor != 'github-actions[bot]')
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
-      contents: read
+      contents: write    # needed for auto-tagging
       packages: write
 
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0    # full history + tags for svu
+          # Use the GITHUB_TOKEN so auto-tag pushes don't loop
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -54,18 +61,56 @@ jobs:
         id: version
         run: |
           if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
-            ver="${GITHUB_REF#refs/tags/}"
+            # Tag push: validate against svu next — refuse stale/backdated tags
+            next="$(svu next)"
+            tag="${GITHUB_REF#refs/tags/}"
+            echo "requested=${tag}" >> "$GITHUB_OUTPUT"
+            if [ "$tag" != "$next" ]; then
+              echo "ERROR: refusing to build tag ${tag} — expected next version is ${next}"
+              echo "Delete the tag and re-tag with ${next}, or push the commits that"
+              echo "would bump the version to ${tag}."
+              exit 1
+            fi
+            echo "version=${tag}" >> "$GITHUB_OUTPUT"
           else
-            ver="$(svu next)"
+            # Branch push: determine next version from conventional commits
+            current="$(svu current)"
+            next="$(svu next)"
+            echo "current=${current}" >> "$GITHUB_OUTPUT"
+            echo "next=${next}" >> "$GITHUB_OUTPUT"
+            if [ "$current" = "$next" ]; then
+              echo "No version bump needed (current=${current}, next=${next})"
+              echo "version_unchanged=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "version=${next}" >> "$GITHUB_OUTPUT"
+              echo "version_unchanged=false" >> "$GITHUB_OUTPUT"
+            fi
           fi
-          echo "version=${ver}" >> "$GITHUB_OUTPUT"
-          echo "Calculated version: ${ver}"
+
+      - name: Auto-tag new version
+        if: |
+          github.ref_type == 'branch' &&
+          steps.version.outputs.version_unchanged == 'false'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "${{ steps.version.outputs.version }}" \
+            -m "release: ${{ steps.version.outputs.version }}"
+          git push origin "${{ steps.version.outputs.version }}"
+
+      # Skip the rest if no version bump is needed (e.g. docs-only commits
+      # that happened to touch a path-filtered file).
+      - name: Skip build when version hasn't changed
+        if: steps.version.outputs.version_unchanged == 'true'
+        run: |
+          echo "No version bump — nothing to publish. Skipping."
 
       - name: Set up Docker Buildx
+        if: steps.version.outputs.version_unchanged != 'true'
         uses: docker/setup-buildx-action@v3
 
       - name: Log in to GitHub Container Registry
-        if: github.event_name != 'pull_request'
+        if: github.event_name != 'pull_request' && steps.version.outputs.version_unchanged != 'true'
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
@@ -73,6 +118,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Extract metadata for Docker
+        if: steps.version.outputs.version_unchanged != 'true'
         id: meta
         uses: docker/metadata-action@v5
         with:
@@ -85,8 +131,8 @@ jobs:
             type=sha,prefix=,suffix=,format=short
             type=raw,value=latest,enable={{is_default_branch}}
 
-
       - name: Build and push Docker image
+        if: steps.version.outputs.version_unchanged != 'true'
         uses: docker/build-push-action@v6
         with:
           context: .
