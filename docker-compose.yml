@@ -1,0 +1,12 @@
+version: "3.9"
+
+services:
+  animelistgen:
+    build: .
+    container_name: animelistgen
+    restart: unless-stopped
+    volumes:
+      - ./animelistgen.yaml:/etc/animelistgen/animelistgen.yaml:ro
+    environment:
+      - MDBLIST_API_KEY=${MDBLIST_API_KEY:-}
+    command: ["daemon", "-c", "/etc/animelistgen/animelistgen.yaml"]

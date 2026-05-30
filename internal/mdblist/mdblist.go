@@ -13,26 +13,57 @@ import (
 )
 
 const (
-	apiBase   = "https://mdblist.com/api"
+	apiBase   = "https://api.mdblist.com"
 	maxRetry  = 3
-	rateLimit = time.Second
+	rateLimit = 1100 * time.Millisecond
 )
 
 // List represents an MDBList list.
 type List struct {
-	ID          string `json:"id"`
-	Title       string `json:"title"`
+	ID          int    `json:"id"`
+	Name        string `json:"name"`
+	Slug        string `json:"slug"`
 	Description string `json:"description"`
-	Public      int    `json:"public"`
-	URL         string `json:"url"`
-	ItemsCount  int    `json:"items_count"`
+	Items       int    `json:"items"`
+	Private     bool   `json:"private"`
+	UserName    string `json:"user_name"`
+	URL         string `json:"url,omitempty"`
+}
+
+// GetURL returns the public URL for the list.
+func (l List) GetURL() string {
+	if l.URL != "" {
+		return l.URL
+	}
+	if l.UserName != "" && l.Slug != "" {
+		return fmt.Sprintf("https://mdblist.com/lists/%s/%s", l.UserName, l.Slug)
+	}
+	return ""
+}
+
+// MediaIDs holds external IDs for a media item from MDBList.
+type MediaIDs struct {
+	IMDB string `json:"imdb"`
+	TMDB int    `json:"tmdb"`
+	TVDB int    `json:"tvdb"`
+	MAL  int    `json:"mal"`
+}
+
+// MediaInfo represents a media item from MDBList's batch lookup.
+type MediaInfo struct {
+	ID      int      `json:"id"`
+	Title   string   `json:"title"`
+	Year    int      `json:"year"`
+	Runtime int      `json:"runtime"`
+	IDs     MediaIDs `json:"ids"`
+	Type    string   `json:"type"`
 }
 
 // Client manages communication with the MDBList API.
 type Client struct {
-	http      *http.Client
-	apiKey    string
-	lastCall  time.Time
+	http     *http.Client
+	apiKey   string
+	lastCall time.Time
 }
 
 // New creates a new MDBList client.
@@ -52,11 +83,33 @@ func (c *Client) throttle() {
 	c.lastCall = time.Now()
 }
 
+// Ping checks connectivity to the MDBList API.
+func (c *Client) Ping(ctx context.Context) error {
+	c.throttle()
+	u := fmt.Sprintf("%s/user?apikey=%s", apiBase, url.QueryEscape(c.apiKey))
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if err != nil {
+		return fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return fmt.Errorf("http request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("MDBList API error (HTTP %d): %s", resp.StatusCode, string(body))
+	}
+	return nil
+}
+
 // ListLists returns all lists belonging to the authenticated user.
 func (c *Client) ListLists(ctx context.Context) ([]List, error) {
 	c.throttle()
-
-	u := fmt.Sprintf("%s/lists?apikey=%s", apiBase, url.QueryEscape(c.apiKey))
+	u := fmt.Sprintf("%s/lists/user?apikey=%s", apiBase, url.QueryEscape(c.apiKey))
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
@@ -79,15 +132,8 @@ func (c *Client) ListLists(ctx context.Context) ([]List, error) {
 	}
 
 	var lists []List
-	// MDBList response varies — try both array and object-wrapped
 	if err := json.Unmarshal(body, &lists); err != nil {
-		var wrapped struct {
-			Lists []List `json:"lists"`
-		}
-		if err2 := json.Unmarshal(body, &wrapped); err2 != nil {
-			return nil, fmt.Errorf("parse lists response: %w (raw: %s)", err, string(body))
-		}
-		lists = wrapped.Lists
+		return nil, fmt.Errorf("parse lists response: %w (raw: %s)", err, string(body))
 	}
 
 	return lists, nil
@@ -100,22 +146,23 @@ func (c *Client) FindListByTitle(ctx context.Context, title string) (*List, erro
 		return nil, err
 	}
 	for _, l := range lists {
-		if strings.EqualFold(l.Title, title) {
+		if strings.EqualFold(l.Name, title) {
 			return &l, nil
 		}
 	}
 	return nil, nil
 }
 
-// CreateList creates a new public MDBList list and returns it.
-func (c *Client) CreateList(ctx context.Context, title, description string, items []string) (*List, error) {
+// CreateList creates a new static list and returns it.
+func (c *Client) CreateList(ctx context.Context, name, description string, public bool) (*List, error) {
 	c.throttle()
 
 	payload := map[string]any{
-		"title":       title,
+		"name":        name,
 		"description": description,
-		"public":      1,
-		"items":       items,
+	}
+	if public {
+		payload["public"] = 1
 	}
 
 	body, err := json.Marshal(payload)
@@ -123,17 +170,213 @@ func (c *Client) CreateList(ctx context.Context, title, description string, item
 		return nil, fmt.Errorf("marshal payload: %w", err)
 	}
 
-	u := fmt.Sprintf("%s/list?apikey=%s", apiBase, url.QueryEscape(c.apiKey))
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, bytes.NewReader(body))
-	if err != nil {
-		return nil, fmt.Errorf("create request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
+	u := fmt.Sprintf("%s/lists/user/add?apikey=%s", apiBase, url.QueryEscape(c.apiKey))
 
+	var list List
+	if err := c.doMutation(ctx, http.MethodPost, u, body, &list); err != nil {
+		return nil, fmt.Errorf("create list %q: %w", name, err)
+	}
+
+	return &list, nil
+}
+
+// UpdateListName updates a list's name.
+func (c *Client) UpdateListName(ctx context.Context, listID int, name string) error {
+	c.throttle()
+	u := fmt.Sprintf("%s/lists/%d?apikey=%s", apiBase, listID, url.QueryEscape(c.apiKey))
+	payload := map[string]string{"name": name}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("marshal payload: %w", err)
+	}
+	return c.doMutation(ctx, http.MethodPut, u, body, nil)
+}
+
+// AddItems adds items to a static list by provider IDs (e.g. imdb, trakt, tmdb, tvdb).
+// items is a map like {"imdb": "tt0903747"} or {"tmdb": 1396}.
+func (c *Client) AddItems(ctx context.Context, listID int, items []map[string]any) error {
+	c.throttle()
+	u := fmt.Sprintf("%s/lists/%d/items/add?apikey=%s", apiBase, listID, url.QueryEscape(c.apiKey))
+
+	payload := map[string]any{
+		"shows": items,
+	}
+
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("marshal payload: %w", err)
+	}
+
+	return c.doMutation(ctx, http.MethodPost, u, body, nil)
+}
+
+// RemoveItems removes items from a static list.
+func (c *Client) RemoveItems(ctx context.Context, listID int, items []map[string]any) error {
+	c.throttle()
+	u := fmt.Sprintf("%s/lists/%d/items/remove?apikey=%s", apiBase, listID, url.QueryEscape(c.apiKey))
+
+	payload := map[string]any{
+		"shows": items,
+	}
+
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("marshal payload: %w", err)
+	}
+
+	return c.doMutation(ctx, http.MethodPost, u, body, nil)
+}
+
+// ReplaceItems replaces all items by removing existing and adding new ones.
+func (c *Client) ReplaceItems(ctx context.Context, listID int, items []map[string]any) error {
+	// MDBList doesn't support a direct replace. We remove all existing items first,
+	// then add the new ones. Since removing all items would require knowing their IDs,
+	// and the API supports remove by ID format, we'll do a two-step:
+	// Remove all then add all.
+	// However, the remove endpoint also uses provider IDs. We can't remove all at once
+	// without knowing what's in the list.
+	//
+	// For our use case (seasonal lists), lists are either new (empty) or need full replacement.
+	// The simplest approach: delete and recreate. This avoids the complexity of sync.
+	return fmt.Errorf("not supported directly; use DeleteAndRecreate")
+}
+
+// DeleteAndRecreate deletes and recreates a list with new items.
+// This is the most reliable way to replace all items.
+func (c *Client) DeleteAndRecreate(ctx context.Context, listID int, name, description string, public bool, items []map[string]any) (*List, error) {
+	// Delete existing list
+	c.throttle()
+	u := fmt.Sprintf("%s/lists/%d?apikey=%s", apiBase, listID, url.QueryEscape(c.apiKey))
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, u, nil)
+	if err != nil {
+		return nil, fmt.Errorf("create delete request: %w", err)
+	}
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("delete request: %w", err)
+	}
+	resp.Body.Close()
+
+	// Create new list with items
+	newList, err := c.CreateList(ctx, name, description, public)
+	if err != nil {
+		return nil, fmt.Errorf("recreate list: %w", err)
+	}
+
+	// Add items one batch at a time
+	if len(items) > 0 {
+		// MDBList allows up to 200 items per request typically
+		const batchSize = 200
+		for i := 0; i < len(items); i += batchSize {
+			end := i + batchSize
+			if end > len(items) {
+				end = len(items)
+			}
+			if err := c.AddItems(ctx, newList.ID, items[i:end]); err != nil {
+				return nil, fmt.Errorf("add items batch: %w", err)
+			}
+		}
+	}
+
+	return newList, nil
+}
+
+// BatchLookupByMAL looks up media by a list of MAL IDs.
+// Returns a map of malID -> MediaInfo for found items (unfound IDs are omitted).
+func (c *Client) BatchLookupByMAL(ctx context.Context, malIDs []int) (map[int]MediaInfo, error) {
+	if len(malIDs) == 0 {
+		return map[int]MediaInfo{}, nil
+	}
+
+	c.throttle()
+
+	// Convert MAL IDs to strings for the API
+	idStrs := make([]string, len(malIDs))
+	for i, id := range malIDs {
+		idStrs[i] = fmt.Sprintf("%d", id)
+	}
+
+	payload := map[string]any{
+		"ids": idStrs,
+	}
+
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return nil, fmt.Errorf("marshal payload: %w", err)
+	}
+
+	u := fmt.Sprintf("%s/mal/show?apikey=%s", apiBase, url.QueryEscape(c.apiKey))
+
+	var results []MediaInfo
+	if err := c.doRequest(ctx, http.MethodPost, u, body, &results); err != nil {
+		return nil, fmt.Errorf("batch lookup: %w", err)
+	}
+
+	resultMap := make(map[int]MediaInfo, len(results))
+	for _, m := range results {
+		if m.IDs.MAL != 0 {
+			resultMap[m.IDs.MAL] = m
+		}
+	}
+
+	return resultMap, nil
+}
+
+// BatchLookupByIMDB looks up media by a list of IMDB IDs.
+func (c *Client) BatchLookupByIMDB(ctx context.Context, imdbIDs []string) (map[string]MediaInfo, error) {
+	if len(imdbIDs) == 0 {
+		return map[string]MediaInfo{}, nil
+	}
+
+	c.throttle()
+
+	payload := map[string]any{
+		"ids": imdbIDs,
+	}
+
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return nil, fmt.Errorf("marshal payload: %w", err)
+	}
+
+	u := fmt.Sprintf("%s/imdb/show?apikey=%s", apiBase, url.QueryEscape(c.apiKey))
+
+	var results []MediaInfo
+	if err := c.doRequest(ctx, http.MethodPost, u, body, &results); err != nil {
+		return nil, fmt.Errorf("batch lookup by imdb: %w", err)
+	}
+
+	resultMap := make(map[string]MediaInfo, len(results))
+	for _, m := range results {
+		if m.IDs.IMDB != "" {
+			resultMap[m.IDs.IMDB] = m
+		}
+	}
+
+	return resultMap, nil
+}
+
+// doRequest sends an HTTP request and decodes the response.
+func (c *Client) doRequest(ctx context.Context, method, url string, body []byte, dst any) error {
 	var lastErr error
 	for attempt := range maxRetry {
 		if attempt > 0 {
-			time.Sleep(time.Duration(1<<(attempt+1)) * time.Second)
+			time.Sleep(time.Duration(1<<attempt) * time.Second)
+		}
+
+		var reqBody io.Reader
+		if body != nil {
+			reqBody = bytes.NewReader(body)
+		}
+
+		req, err := http.NewRequestWithContext(ctx, method, url, reqBody)
+		if err != nil {
+			return fmt.Errorf("create request: %w", err)
+		}
+		req.Header.Set("Accept", "application/json")
+		if body != nil {
+			req.Header.Set("Content-Type", "application/json")
 		}
 
 		resp, err := c.http.Do(req)
@@ -141,59 +384,86 @@ func (c *Client) CreateList(ctx context.Context, title, description string, item
 			lastErr = fmt.Errorf("http request: %w", err)
 			continue
 		}
-		defer resp.Body.Close()
 
-		respBody, _ := io.ReadAll(resp.Body)
+		respBody, readErr := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if readErr != nil {
+			lastErr = fmt.Errorf("read response: %w", readErr)
+			continue
+		}
 
 		if resp.StatusCode == http.StatusTooManyRequests {
+			// Exponential backoff: 2s, 4s, 8s
+			time.Sleep(time.Duration(1<<(attempt+1)) * time.Second)
 			lastErr = fmt.Errorf("rate limited (attempt %d)", attempt+1)
 			continue
 		}
 
-		if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		if resp.StatusCode >= 400 {
 			lastErr = fmt.Errorf("MDBList error (HTTP %d): %s", resp.StatusCode, string(respBody))
 			continue
 		}
 
-		var list List
-		if err := json.Unmarshal(respBody, &list); err != nil {
-			return nil, fmt.Errorf("parse create response: %w", err)
+		if dst != nil {
+			if err := json.Unmarshal(respBody, dst); err != nil {
+				return fmt.Errorf("parse response: %w (body: %s)", err, string(respBody))
+			}
 		}
-		return &list, nil
+
+		return nil
 	}
 
-	return nil, fmt.Errorf("giving up after %d retries: %w", maxRetry, lastErr)
+	return fmt.Errorf("giving up after %d retries: %w", maxRetry, lastErr)
 }
 
-// UpdateList replaces all items in an existing list.
-func (c *Client) UpdateList(ctx context.Context, listID string, items []string) error {
-	c.throttle()
+// doMutation sends a mutation request with retry support for 429 responses.
+func (c *Client) doMutation(ctx context.Context, method, url string, body []byte, dst any) error {
+	var lastErr error
+	for attempt := range maxRetry {
+		if attempt > 0 {
+			time.Sleep(time.Duration(1<<(attempt+1)) * time.Second)
+		}
 
-	payload := map[string]any{
-		"items": items,
-	}
-	body, err := json.Marshal(payload)
-	if err != nil {
-		return fmt.Errorf("marshal payload: %w", err)
+		req, err := http.NewRequestWithContext(ctx, method, url, bytes.NewReader(body))
+		if err != nil {
+			return fmt.Errorf("create request: %w", err)
+		}
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Accept", "application/json")
+
+		resp, err := c.http.Do(req)
+		if err != nil {
+			lastErr = fmt.Errorf("http request: %w", err)
+			continue
+		}
+
+		respBody, readErr := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if readErr != nil {
+			lastErr = fmt.Errorf("read response: %w", readErr)
+			continue
+		}
+
+		if resp.StatusCode == http.StatusTooManyRequests {
+			// Exponential backoff: 2s, 4s, 8s
+			time.Sleep(time.Duration(1<<(attempt+1)) * time.Second)
+			lastErr = fmt.Errorf("rate limited (attempt %d)", attempt+1)
+			continue
+		}
+
+		if resp.StatusCode >= 400 {
+			lastErr = fmt.Errorf("MDBList error (HTTP %d): %s", resp.StatusCode, string(respBody))
+			continue
+		}
+
+		if dst != nil {
+			if err := json.Unmarshal(respBody, dst); err != nil {
+				return fmt.Errorf("parse response: %w (body: %s)", err, string(respBody))
+			}
+		}
+
+		return nil
 	}
 
-	u := fmt.Sprintf("%s/list/%s?apikey=%s", apiBase, url.PathEscape(listID), url.QueryEscape(c.apiKey))
-	req, err := http.NewRequestWithContext(ctx, http.MethodPut, u, bytes.NewReader(body))
-	if err != nil {
-		return fmt.Errorf("create request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := c.http.Do(req)
-	if err != nil {
-		return fmt.Errorf("update request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		respBody, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("MDBList update error (HTTP %d): %s", resp.StatusCode, string(respBody))
-	}
-
-	return nil
+	return fmt.Errorf("giving up after %d retries: %w", maxRetry, lastErr)
 }
