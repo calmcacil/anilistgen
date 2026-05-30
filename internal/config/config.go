@@ -49,6 +49,11 @@ type AniListConfig struct {
 	MaxPerSeason int `yaml:"max_per_season"`
 	// IncludeONA includes ONA format alongside TV. Default: true.
 	IncludeONA bool `yaml:"include_ona"`
+	// WinterOverflow merges the previous year's WINTER season into the current
+	// WINTER query, capturing shows that premiered in December of the prior year
+	// (AniList assigns seasonYear to the calendar year, so December shows are
+	// tagged under the previous year). Default: false.
+	WinterOverflow bool `yaml:"winter_overflow"`
 	// FallbackRelationTypes controls which AniList relation types to follow
 	// when a show is not found in MDBList by its direct MAL ID.
 	// Only matching relation types are used as fallback.
@@ -323,6 +328,10 @@ func (c *Config) applyEnvOverrides() {
 
 	if v := os.Getenv(envPrefix + "ANILIST_INCLUDE_ONA"); v != "" {
 		c.AniList.IncludeONA = v == "1" || strings.EqualFold(v, "true")
+	}
+
+	if v := os.Getenv(envPrefix + "ANILIST_WINTER_OVERFLOW"); v != "" {
+		c.AniList.WinterOverflow = v == "1" || strings.EqualFold(v, "true")
 	}
 
 	if v := os.Getenv(envPrefix + "ANILIST_FALLBACK_RELATIONS"); v != "" {

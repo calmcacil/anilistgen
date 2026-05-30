@@ -168,6 +168,7 @@ func runOneshot(configPath string, dryRun bool, outputDir string, verbose bool) 
 	syncCfg := sync.SyncConfig{
 		MaxPerSeason:          cfg.AniList.MaxPerSeason,
 		IncludeONA:            cfg.AniList.IncludeONA,
+		WinterOverflow:        cfg.AniList.WinterOverflow,
 		TitleTemplate:         cfg.MDBList.TitleTemplate,
 		DescriptionTemplate:   cfg.MDBList.DescriptionTemplate,
 		Public:                cfg.MDBList.Public,
@@ -228,6 +229,7 @@ func runDaemon(configPath string, dryRun bool, outputDir string, verbose bool) e
 	syncCfg := sync.SyncConfig{
 		MaxPerSeason:          cfg.AniList.MaxPerSeason,
 		IncludeONA:            cfg.AniList.IncludeONA,
+		WinterOverflow:        cfg.AniList.WinterOverflow,
 		TitleTemplate:         cfg.MDBList.TitleTemplate,
 		DescriptionTemplate:   cfg.MDBList.DescriptionTemplate,
 		Public:                cfg.MDBList.Public,

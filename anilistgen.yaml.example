@@ -23,6 +23,13 @@ anilist:
   # Include ONA format alongside TV
   include_ona: true
 
+  # Merge previous year's December shows into WINTER season.
+  # When enabled, also fetches the prior year's WINTER and merges
+  # any shows not already in the current year's results. This
+  # captures December-premiering anime that AniList tagged under
+  # the previous year.
+  winter_overflow: false
+
 # MDBList list settings
 mdblist:
   title_template: "Anime {season} {year}"

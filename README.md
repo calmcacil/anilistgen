@@ -86,6 +86,7 @@ anilist:
   seasons: [all]           # Or: winter, spring, summer, fall
   max_per_season: 100      # Max shows fetched per season from AniList
   include_ona: true        # Include ONA format alongside TV
+  winter_overflow: false   # Merge previous year's December shows into WINTER
   fallback_relation_types: [PREQUEL, PARENT]
     # When a show is not in MDBList by its direct MAL ID, try these
     # AniList relation types as fallback:
@@ -128,6 +129,7 @@ Useful for Docker, CI/CD, or containers.
 | `ALG_ANILIST_SEASONS` | `anilist.seasons` | `all` |
 | `ALG_ANILIST_MAX_PER_SEASON` | `anilist.max_per_season` | `100` |
 | `ALG_ANILIST_INCLUDE_ONA` | `anilist.include_ona` | `true` |
+| `ALG_ANILIST_WINTER_OVERFLOW` | `anilist.winter_overflow` | `false` |
 | `ALG_ANILIST_FALLBACK_RELATIONS` | `anilist.fallback_relation_types` | `PREQUEL,PARENT` |
 | `ALG_MDBLIST_TITLE_TEMPLATE` | `mdblist.title_template` | `Anime {season} {year}` |
 | `ALG_MDBLIST_DESCRIPTION_TEMPLATE` | `mdblist.description_template` | (long default) |
@@ -138,7 +140,7 @@ Useful for Docker, CI/CD, or containers.
 
 **Notes on env var format:**
 - Lists (YEARS, SEASONS, BLACKLIST, FALLBACK_RELATIONS) use comma separation: `2026,2027`
-- Booleans (RUN_ON_START, PUBLIC, INCLUDE_ONA) accept `true`/`1` or `false`/`0`
+- Booleans (RUN_ON_START, PUBLIC, INCLUDE_ONA, WINTER_OVERFLOW) accept `true`/`1` or `false`/`0`
 - INTERVAL is a Go duration string: `168h` (week), `24h` (day), `30m`, `0` (oneshot)
 
 ### Blacklist
@@ -222,6 +224,30 @@ This means **WINTER 2026 does not include December 2025 shows**. If you
 configure the tool for year `2026` and season `WINTER`, you'll get anime
 that started airing in January–February 2026 (and possibly very late
 December 2025 if the show itself was tagged as WINTER 2026 on AniList).
+
+### Winter overflow (`winter_overflow: true`)
+
+To bridge this gap, set `winter_overflow: true` in your config. When
+enabled, the tool fetches the **previous year's WINTER** season as well
+and merges any shows that weren't already in the current year's results.
+
+This captures December-premiering shows from the prior year without
+missing the January–February premieres in the current year. Duplicates
+are removed by AniList ID.
+
+```yaml
+anilist:
+  winter_overflow: true   # also pull in shows from Dec of the prior year
+```
+
+| Config | WINTER 2026 result |
+|--------|-------------------|
+| `winter_overflow: false` (default) | Shows airing Jan–Feb 2026 only |
+| `winter_overflow: true` | Shows airing Jan–Feb 2026 + December 2025 shows not already in the list |
+
+The overflow is capped at `max_per_season` results, just like the primary
+query. If the previous winter's overflow query fails (e.g. network error),
+the tool logs a warning and continues with the current year's results only.
 
 ### Season start timing (approximate)
 

@@ -77,6 +77,7 @@ type Syncer struct {
 type SyncConfig struct {
 	MaxPerSeason            int
 	IncludeONA              bool
+	WinterOverflow          bool
 	TitleTemplate           string
 	DescriptionTemplate     string
 	Public                  bool
@@ -130,6 +131,41 @@ func (s *Syncer) SyncSeason(ctx context.Context, season string, year int) Result
 			Season: season,
 			Year:   year,
 			Error:  fmt.Errorf("fetch AniList: %w", err),
+		}
+	}
+
+	// Winter overflow: also fetch the previous year's WINTER season to capture
+	// shows that started airing in December but are tagged under the prior year.
+	if s.cfg.WinterOverflow && season == "WINTER" {
+		overflowYear := year - 1
+		slog.Debug("winter overflow: also fetching",
+			"season", season, "year", overflowYear)
+
+		overflow, err := s.anilist.FetchSeason(ctx, season, overflowYear,
+			s.cfg.MaxPerSeason, s.cfg.IncludeONA)
+		if err != nil {
+			slog.Warn("winter overflow fetch failed, continuing without overflow",
+				"year", overflowYear, "error", err)
+		} else if len(overflow) > 0 {
+			primary := len(shows)
+			seen := make(map[int]bool, primary)
+			for _, sh := range shows {
+				seen[sh.ID] = true
+			}
+			added := 0
+			for _, sh := range overflow {
+				if !seen[sh.ID] {
+					shows = append(shows, sh)
+					seen[sh.ID] = true
+					added++
+				}
+			}
+			slog.Info("winter overflow merged",
+				"year", year,
+				"overflow_year", overflowYear,
+				"primary", primary,
+				"added_from_overflow", added,
+				"total", len(shows))
 		}
 	}
 
