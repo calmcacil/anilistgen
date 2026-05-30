@@ -407,7 +407,7 @@ func (s *Syncer) syncMDBList(ctx context.Context, season string, year int, title
 
 	// Build items for MDBList, trying fallback if direct match fails
 	var mdbItems []mdbItem
-	var foundDirect, foundFallback, notFoundCount int
+	var foundDirect, foundFallback, foundSearch, notFoundCount int
 
 	for i := range items {
 		it := items[i]
@@ -473,7 +473,27 @@ func (s *Syncer) syncMDBList(ctx context.Context, season string, year int, title
 			}
 		}
 
-		// Show not found in MDBList at all — skip
+		// Not found by ID or relation — try title search via MDBList
+		if s.mdblist != nil {
+			searchResult, searchErr := s.mdblist.SearchByTitle(ctx, displayTitle)
+			if searchErr != nil {
+				slog.Debug("title search failed", "title", displayTitle, "error", searchErr)
+			} else if searchResult != nil {
+				id := mdblist.ProviderIDsFromSearch(*searchResult)
+				if len(id) > 0 {
+					mdbItems = append(mdbItems, mdbItem{id: id, title: displayTitle})
+					items[i].found = true
+					foundSearch++
+					slog.Debug("matched via title search",
+						"title", displayTitle,
+						"search_result", searchResult.Title,
+						"provider", id)
+					continue
+				}
+			}
+		}
+
+		// Show not found in MDBList at all
 		notFoundCount++
 		slog.Debug("show not in MDBList, skipping",
 			"title", displayTitle,
@@ -486,6 +506,7 @@ func (s *Syncer) syncMDBList(ctx context.Context, season string, year int, title
 			"not_found", notFoundCount,
 			"direct_matches", foundDirect,
 			"fallback_matches", foundFallback,
+			"title_search_matches", foundSearch,
 			"total", len(shows))
 	}
 
@@ -547,10 +568,10 @@ func (s *Syncer) syncMDBList(ctx context.Context, season string, year int, title
 				ListTitle:        title,
 				ListURL:          newList.GetURL(),
 				ShowCount:        len(shows),
-				TotalInDB:        foundDirect + foundFallback,
+				TotalInDB:    foundDirect + foundFallback + foundSearch,
 				FoundViaFallback: foundFallback,
-				NotFoundInDB:     notFoundCount,
-				Created:          true,
+				NotFoundInDB: notFoundCount,
+				Created:      true,
 			}
 		}
 
@@ -599,10 +620,10 @@ func (s *Syncer) syncMDBList(ctx context.Context, season string, year int, title
 			ListTitle:        title,
 			ListURL:          existing.GetURL(),
 			ShowCount:        len(shows),
-			TotalInDB:        foundDirect + foundFallback,
+			TotalInDB:    foundDirect + foundFallback + foundSearch,
 			FoundViaFallback: foundFallback,
-			NotFoundInDB:     notFoundCount,
-			Updated:          removed > 0 || added > 0,
+			NotFoundInDB: notFoundCount,
+			Updated:      removed > 0 || added > 0,
 		}
 	}
 
@@ -646,10 +667,10 @@ func (s *Syncer) syncMDBList(ctx context.Context, season string, year int, title
 		ListTitle:        title,
 		ListURL:          newList.GetURL(),
 		ShowCount:        len(shows),
-		TotalInDB:        foundDirect + foundFallback,
+		TotalInDB:    foundDirect + foundFallback + foundSearch,
 		FoundViaFallback: foundFallback,
-		NotFoundInDB:     notFoundCount,
-		Created:          true,
+		NotFoundInDB: notFoundCount,
+		Created:      true,
 	}
 }
 

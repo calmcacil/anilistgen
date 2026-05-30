@@ -301,6 +301,82 @@ func (c *Client) BatchLookupByMAL(ctx context.Context, malIDs []int) (map[int]Me
 	return resultMap, nil
 }
 
+// SearchResultItem holds a single result from MDBList's title search.
+type SearchResultItem struct {
+	Title string      `json:"title"`
+	Year  int         `json:"year"`
+	IDs   SearchIDs   `json:"ids"`
+	Type  string      `json:"type"`
+}
+
+// SearchIDs holds provider IDs returned by the search endpoint.
+type SearchIDs struct {
+	IMDB  string `json:"imdbid"`
+	TMDB  int    `json:"tmdbid"`
+	TVDB  int    `json:"tvdbid"`
+	MAL   int    `json:"malid"`
+}
+
+// searchResponse wraps the MDBList search API response.
+type searchResponse struct {
+	Search []SearchResultItem `json:"search"`
+}
+
+// ProviderIDsFromSearch converts a search result into a provider ID map
+// suitable for AddItems, preferring IMDB over TMDB over TVDB.
+func ProviderIDsFromSearch(r SearchResultItem) map[string]any {
+	id := map[string]any{}
+	if r.IDs.IMDB != "" {
+		id["imdb"] = r.IDs.IMDB
+	} else if r.IDs.TMDB != 0 {
+		id["tmdb"] = r.IDs.TMDB
+	} else if r.IDs.TVDB != 0 {
+		id["tvdb"] = r.IDs.TVDB
+	}
+	return id
+}
+
+// SearchByTitle searches MDBList's database by show title.
+// Returns the best matching result, or nil if nothing found.
+func (c *Client) SearchByTitle(ctx context.Context, title string) (*SearchResultItem, error) {
+	c.throttle()
+
+	u := fmt.Sprintf("%s/search/show?apikey=%s&query=%s",
+		apiBase, url.QueryEscape(c.apiKey), url.QueryEscape(title))
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("search request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read response: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("MDBList search error (HTTP %d): %s", resp.StatusCode, string(body))
+	}
+
+	var sr searchResponse
+	if err := json.Unmarshal(body, &sr); err != nil {
+		return nil, fmt.Errorf("parse search response: %w", err)
+	}
+
+	if len(sr.Search) == 0 {
+		return nil, nil
+	}
+
+	return &sr.Search[0], nil
+}
+
 // doRequest sends an HTTP request and decodes the response.
 func (c *Client) doRequest(ctx context.Context, method, url string, body []byte, dst any) error {
 	var lastErr error
