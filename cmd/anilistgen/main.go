@@ -274,6 +274,26 @@ func processSeason(ctx context.Context, client *anilist.Client, cfg *config.Conf
 		shows = fetchWinterOverflow(ctx, client, year, cfg.AniList.MaxPerSeason, formats, shows)
 	}
 
+	if season == "WINTER" {
+		var filtered []anilist.Show
+		for _, sh := range shows {
+			if sh.IsWinterStart() {
+				filtered = append(filtered, sh)
+			} else {
+				slog.Debug("skipped winter show outside season range",
+					"title", sh.DisplayTitle(),
+					"month", sh.StartDate.Month)
+			}
+		}
+		if len(filtered) != len(shows) {
+			slog.Info("filtered winter shows by start month",
+				"total", len(shows),
+				"kept", len(filtered),
+				"removed", len(shows)-len(filtered))
+		}
+		shows = filtered
+	}
+
 	slog.Info("fetched shows from AniList",
 		"season", season, "year", year, "count", len(shows))
 
@@ -353,6 +373,24 @@ func fetchAndAppendNextWinter(ctx context.Context, client *anilist.Client, cfg *
 			"year", nextWinter, "error", err)
 		return
 	}
+
+	var filtered []anilist.Show
+	for _, sh := range shows {
+		if sh.IsWinterStart() {
+			filtered = append(filtered, sh)
+		} else {
+			slog.Debug("skipped winter show outside season range",
+				"title", sh.DisplayTitle(),
+				"month", sh.StartDate.Month)
+		}
+	}
+	if len(filtered) != len(shows) {
+		slog.Info("filtered next winter shows by start month",
+			"total", len(shows),
+			"kept", len(filtered),
+			"removed", len(shows)-len(filtered))
+	}
+	shows = filtered
 
 	shows = filter.Filter(shows, filter.Config{
 		Blacklist:   cfg.Blacklist,

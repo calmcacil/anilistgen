@@ -120,6 +120,19 @@ func (s Show) IsWithinMonths(months int) bool {
 	return !start.After(time.Now().AddDate(0, months, 0))
 }
 
+// IsWinterStart returns true if the show's start date month falls within
+// the winter anime season (December through March). Shows with unknown
+// start dates are kept (returns true) since they cannot be ruled out.
+// AniList's winter season spans December of the previous calendar year
+// through March of the current year, so months 12, 1, 2, and 3 are valid.
+func (s Show) IsWinterStart() bool {
+	if s.StartDate.Month == nil {
+		return true
+	}
+	m := *s.StartDate.Month
+	return m == 12 || m == 1 || m == 2 || m == 3
+}
+
 // DisplayTitle returns the English title if available, falling back to romaji.
 func (s Show) DisplayTitle() string {
 	if s.Title.English != nil && *s.Title.English != "" {
