@@ -288,6 +288,44 @@ func runGenerate(configPath string, dryRun bool, outputDir string, verbose bool)
 		}
 	}
 
+	if len(years) > 0 && len(seasons) == 4 {
+		lastYear := years[len(years)-1]
+		nextWinter := lastYear + 1
+		slog.Info("all seasons enabled, also fetching next winter",
+			"season", "WINTER", "year", nextWinter)
+
+		shows, err := aniClient.FetchSeason(ctx, "WINTER", nextWinter, cfg.AniList.MaxPerSeason, formats)
+		if err != nil {
+			slog.Warn("next winter fetch failed, continuing without it",
+				"year", nextWinter, "error", err)
+		} else {
+			shows = filter.Filter(shows, filter.Config{
+				Blacklist:   cfg.Blacklist,
+				ExcludeTags: cfg.AniList.ExcludeTags,
+				AheadMonths: cfg.AniList.AheadMonths,
+			})
+			shows = filter.FilterFuture(shows, cfg.AniList.AheadMonths)
+
+			var seriesShows, movieShows []anilist.Show
+			var seriesNew []anilist.Show
+			for _, sh := range shows {
+				if sh.IsSeries() {
+					seriesShows = append(seriesShows, sh)
+					if sh.IsNew() {
+						seriesNew = append(seriesNew, sh)
+					}
+				} else {
+					movieShows = append(movieShows, sh)
+				}
+			}
+
+			key := fmt.Sprintf("WINTER-%d", nextWinter)
+			series.shows[key] = seriesShows
+			series.new[key] = seriesNew
+			movies.shows[key] = movieShows
+		}
+	}
+
 	type catResult struct {
 		label string
 		data  map[string][]output.Show
