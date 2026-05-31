@@ -1,5 +1,7 @@
 # anilistgen
 
+![Last updated](https://img.shields.io/github/last-commit/calmcacil/sonarr-seasonal-lists/gh-pages?label=last%20updated&color=blue)
+
 Sonarr-compatible seasonal anime lists from AniList.
 
 Replace `2026` with any available year. Add the URL to
