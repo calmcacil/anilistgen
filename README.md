@@ -9,8 +9,6 @@ Sonarr → Settings → Import Lists → Add → Custom List.
 
 | URL | What it includes |
 |---|---|
-| URL | What it includes |
-|---|---|
 | `https://lists.calmcacil.dev/2026/winter-series.json` | TV shows airing Winter 2026 |
 | `https://lists.calmcacil.dev/2026/spring-series.json` | TV shows airing Spring 2026 |
 | `https://lists.calmcacil.dev/2026/summer-series.json` | TV shows airing Summer 2026 |
