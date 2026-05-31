@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
+	"time"
 )
 
 const baseURL = "https://lists.calmcacil.dev"
@@ -47,7 +49,6 @@ func writeJSON(dir, filename string, shows []Show) error {
 
 func WriteAllJSON(outputDir, category string, seasonal map[string][]Show) error {
 	byYear := map[int][]Show{}
-
 	years := map[int]bool{}
 
 	for key, shows := range seasonal {
@@ -87,9 +88,26 @@ func WriteIndex(dir string, years map[int]bool) error {
 	for y := range years {
 		yList = append(yList, y)
 	}
+	now := time.Now().Year()
+	sort.Slice(yList, func(i, j int) bool {
+		a, b := yList[i], yList[j]
+		prio := func(y int) int {
+			if y == now { return 0 }
+			if y == now+1 { return 1 }
+			return 1000 - y
+		}
+		return prio(a) < prio(b)
+	})
 
-	seasonLabels := []string{"Winter", "Spring", "Summer", "Fall"}
-	seasonKeys := []string{"winter", "spring", "summer", "fall"}
+	// Build year options HTML
+	var yearOpts string
+	for _, y := range yList {
+		sel := ""
+		if y == now {
+			sel = " selected"
+		}
+		yearOpts += fmt.Sprintf("      <option value=\"%d\"%s>%d</option>\n", y, sel, y)
+	}
 
 	html := `<!DOCTYPE html>
 <html lang="en">
@@ -102,102 +120,172 @@ func WriteIndex(dir string, years map[int]bool) error {
   body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     background: #0d1117; color: #c9d1d9;
-    display: flex; justify-content: center; align-items: center;
-    min-height: 100vh; padding: 20px;
+    min-height: 100vh; padding: 30px;
+    display: flex; gap: 30px; justify-content: center; align-items: flex-start;
   }
-  .card {
+  .sidebar {
     background: #161b22; border: 1px solid #30363d; border-radius: 12px;
-    padding: 40px; max-width: 520px; width: 100%;
+    padding: 28px; width: 320px; flex-shrink: 0;
+    position: sticky; top: 30px;
   }
-  h1 { font-size: 22px; margin-bottom: 6px; }
-  p { color: #8b949e; font-size: 14px; margin-bottom: 24px; }
-  .row { display: flex; gap: 12px; margin-bottom: 16px; }
+  .sidebar h2 { font-size: 16px; margin-bottom: 16px; }
+  .sidebar ol { padding-left: 20px; font-size: 13px; line-height: 1.8; color: #8b949e; }
+  .sidebar ol li { margin-bottom: 6px; }
+  .sidebar code {
+    background: #0d1117; padding: 2px 6px; border-radius: 4px;
+    font-size: 12px; color: #c9d1d9;
+  }
+  .sidebar .note { margin-top: 16px; font-size: 12px; color: #484f58; }
+  .sidebar .note code { font-size: 11px; }
+  .main { max-width: 820px; width: 100%; }
+  h1 { font-size: 24px; margin-bottom: 4px; }
+  .sub { color: #8b949e; font-size: 14px; margin-bottom: 24px; }
+  .controls { margin-bottom: 24px; }
   select {
-    flex: 1; padding: 10px 12px; border-radius: 8px;
+    padding: 10px 16px; border-radius: 8px;
     background: #0d1117; color: #c9d1d9; border: 1px solid #30363d;
-    font-size: 14px; cursor: pointer;
+    font-size: 15px; cursor: pointer; min-width: 160px;
   }
-  .url-box {
-    display: flex; gap: 8px; margin-bottom: 20px;
+  .section-label {
+    font-size: 13px; font-weight: 600; color: #8b949e;
+    text-transform: uppercase; letter-spacing: 0.5px;
+    margin-bottom: 12px; margin-top: 20px;
   }
-  .url-box input {
-    flex: 1; padding: 10px 12px; border-radius: 8px;
-    background: #0d1117; color: #8b949e; border: 1px solid #30363d;
-    font-size: 13px; font-family: monospace;
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
+  .box {
+    background: #161b22; border: 1px solid #30363d; border-radius: 10px;
+    padding: 16px; display: flex; flex-direction: column; gap: 10px;
   }
-  .btn {
-    padding: 10px 18px; border-radius: 8px; border: none;
-    font-size: 14px; font-weight: 600; cursor: pointer;
-    background: #238636; color: #fff; white-space: nowrap;
+  .box .hdr {
+    display: flex; justify-content: space-between; align-items: center;
   }
-  .btn:hover { background: #2ea043; }
-  .btn:active { background: #1e7e34; }
+  .box .hdr .lbl { font-size: 14px; font-weight: 600; }
   .badge {
-    display: inline-block; padding: 3px 8px; border-radius: 4px;
-    font-size: 11px; font-weight: 600; margin-left: 8px;
+    display: inline-block; padding: 2px 8px; border-radius: 4px;
+    font-size: 10px; font-weight: 700; letter-spacing: 0.3px;
   }
   .badge-sonarr { background: #1f6feb; color: #fff; }
-  .copied { background: #30363d; color: #8b949e; padding: 8px 12px;
-    border-radius: 8px; font-size: 13px; text-align: center; display: none; }
+  .box .btn-row { display: flex; gap: 6px; }
+  .box .btn-row .btn {
+    flex: 1; padding: 8px 10px; border-radius: 6px; border: none;
+    font-size: 12px; font-weight: 600; cursor: pointer; text-align: center;
+    transition: background 0.15s;
+  }
+  .btn-copy { background: #238636; color: #fff; }
+  .btn-copy:hover { background: #2ea043; }
+  .btn-copy:active { background: #1e7e34; }
+  .btn-new {
+    background: #1f6feb; color: #fff;
+  }
+  .btn-new:hover { background: #388bfd; }
+  .btn-new.active { background: #da3633; }
+  .btn-new.active:hover { background: #f85149; }
+  .toast {
+    position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+    background: #30363d; color: #c9d1d9; padding: 10px 24px;
+    border-radius: 8px; font-size: 13px; display: none;
+    border: 1px solid #484f58; z-index: 999;
+  }
+  @media (max-width: 800px) {
+    body { flex-direction: column; padding: 16px; gap: 16px; }
+    .sidebar { width: 100%; position: static; }
+  }
 </style>
 </head>
 <body>
-<div class="card">
-  <h1>Seasonal Anime Lists</h1>
-  <p>Select a year and season, then copy the Sonarr import URL.</p>
 
-  <div class="row">
-    <select id="year">
-`
-	for _, y := range yList {
-		html += fmt.Sprintf("      <option value=\"%d\">%d</option>\n", y, y)
-	}
-	html += `    </select>
-    <select id="season">
-      <option value="all">Entire Year</option>
-`
-	for i, s := range seasonLabels {
-		html += fmt.Sprintf("      <option value=\"%s\">%s</option>\n", seasonKeys[i], s)
-	}
-	html += `    </select>
-  </div>
-
-  <div class="row" style="gap:8px; flex-wrap:wrap;">
-    <span class="badge badge-sonarr">Sonarr</span>
-  </div>
-
-  <div class="url-box">
-    <input type="text" id="url" readonly value="` + baseURL + `/2026/series.json">
-    <button class="btn" onclick="copyUrl()">Copy</button>
-  </div>
-  <div class="copied" id="copied">URL copied to clipboard</div>
+<div class="sidebar">
+  <h2>How to use in Sonarr</h2>
+  <ol>
+    <li>Go to <strong>Settings → Import Lists</strong></li>
+    <li>Click <strong>Add List</strong> → <strong>Custom List</strong></li>
+    <li>Paste one of the URLs from the boxes</li>
+    <li>Set <strong>Monitor</strong> to your preference</li>
+    <li>Click <strong>Save</strong> — Sonarr imports on its next sync</li>
+  </ol>
+  <p class="note">
+    Lists update weekly. Toggle <strong>New only</strong> to exclude sequels and spin-offs.<br>
+    <code style="font-size:11px;">lists.calmcacil.dev</code>
+  </p>
 </div>
 
+<div class="main">
+  <h1>Seasonal Anime Lists</h1>
+  <p class="sub">Sonarr-compatible lists generated from AniList data.</p>
+
+  <div class="controls">
+    <select id="yearSel">` + "\n" + yearOpts + `    </select>
+  </div>
+
+  <div class="section-label">By Season</div>
+  <div class="grid" id="seasonGrid"></div>
+
+  <div class="section-label">Full Year</div>
+  <div class="grid" id="yearGrid"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
 <script>
-const base = '` + baseURL + `';
-const yearSel = document.getElementById('year');
-const seasonSel = document.getElementById('season');
-const urlInput = document.getElementById('url');
+var base = '` + baseURL + `';
+var yearSel = document.getElementById('yearSel');
+var seasonGrid = document.getElementById('seasonGrid');
+var yearGrid = document.getElementById('yearGrid');
+var toast = document.getElementById('toast');
 
-function updateUrl() {
-  const y = yearSel.value;
-  const s = seasonSel.value;
-  if (s === 'all') {
-    urlInput.value = base + '/' + y + '/series.json';
-  } else {
-    urlInput.value = base + '/' + y + '/' + s + '-series.json';
+var seasonKeys = ['winter','spring','summer','fall'];
+var seasonLabels = ['Winter','Spring','Summer','Fall'];
+
+function buildGrid() {
+  var y = yearSel.value;
+
+  // Season boxes
+  var sh = '';
+  for (var i = 0; i < 4; i++) {
+    var k = seasonKeys[i];
+    var lbl = seasonLabels[i];
+    var url = base + '/' + y + '/' + k + '-series.json';
+    var urlNew = base + '/' + y + '/' + k + '-series-new.json';
+    sh += '<div class=\"box\">'
+      + '<div class=\"hdr\"><span class=\"lbl\">' + lbl + '</span><span class=\"badge badge-sonarr\">Sonarr</span></div>'
+      + '<div class=\"btn-row\">'
+      + '<button class=\"btn btn-copy\" onclick=\"copyUrl(\'' + url + '\')\">Copy URL</button>'
+      + '<button class=\"btn btn-new\" id=\"newBtn' + i + '\" onclick=\"copyNewUrl(\'' + urlNew + '\', ' + i + ')\">New only</button>'
+      + '</div></div>';
   }
+  seasonGrid.innerHTML = sh;
+
+  // Full year boxes
+  var yh = '';
+  var yearUrl = base + '/' + y + '/series.json';
+  var yearUrlNew = base + '/' + y + '/series-new.json';
+  yh += '<div class=\"box\">'
+    + '<div class=\"hdr\"><span class=\"lbl\">' + y + ' Series</span><span class=\"badge badge-sonarr\">Sonarr</span></div>'
+    + '<div class=\"btn-row\">'
+    + '<button class=\"btn btn-copy\" onclick=\"copyUrl(\'' + yearUrl + '\')\">Copy URL</button>'
+    + '<button class=\"btn btn-new\" id=\"newBtnYear\" onclick=\"copyNewUrl(\'' + yearUrlNew + '\', -1)\">New only</button>'
+    + '</div></div>';
+  yearGrid.innerHTML = yh;
 }
 
-function copyUrl() {
-  urlInput.select();
-  navigator.clipboard.writeText(urlInput.value);
-  document.getElementById('copied').style.display = 'block';
-  setTimeout(() => document.getElementById('copied').style.display = 'none', 2000);
+function copyUrl(url) {
+  navigator.clipboard.writeText(url);
+  showToast('Copied: ' + url.split('/').pop());
 }
 
-yearSel.addEventListener('change', updateUrl);
-seasonSel.addEventListener('change', updateUrl);
+function copyNewUrl(url, id) {
+  navigator.clipboard.writeText(url);
+  showToast('Copied (new only): ' + url.split('/').pop());
+}
+
+function showToast(msg) {
+  toast.textContent = msg;
+  toast.style.display = 'block';
+  setTimeout(function() { toast.style.display = 'none'; }, 2000);
+}
+
+yearSel.addEventListener('change', buildGrid);
+buildGrid();
 </script>
 </body>
 </html>`
