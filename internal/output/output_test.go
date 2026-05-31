@@ -126,7 +126,7 @@ func TestWriteAllJSON(t *testing.T) {
 		"WINTER-2025": {{TVDBID: 3, Title: "Old Show"}},
 	}
 
-	err := WriteAllJSON(dir, "series", seasonal)
+	err := WriteAllJSON(dir, "https://example.com", "series", seasonal)
 	if err != nil {
 		t.Fatalf("WriteAllJSON: %v", err)
 	}
@@ -136,13 +136,16 @@ func TestWriteAllJSON(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if len(entries) != 2 {
-		t.Fatalf("expected 2 year directories, got %d", len(entries))
-	}
-
 	dirs := map[string]bool{}
+	var hasIndex bool
 	for _, e := range entries {
 		dirs[e.Name()] = e.IsDir()
+		if e.Name() == "index.html" {
+			hasIndex = true
+		}
+	}
+	if !hasIndex {
+		t.Error("missing index.html")
 	}
 	if !dirs["2025"] {
 		t.Error("missing 2025 dir")
@@ -185,10 +188,10 @@ func TestWriteAllJSON_MultipleCategories(t *testing.T) {
 		"WINTER-2026": {{TVDBID: 2, Title: "Movie A"}},
 	}
 
-	if err := WriteAllJSON(dir, "series", series); err != nil {
+	if err := WriteAllJSON(dir, "https://example.com", "series", series); err != nil {
 		t.Fatal(err)
 	}
-	if err := WriteAllJSON(dir, "movies", movies); err != nil {
+	if err := WriteAllJSON(dir, "https://example.com", "movies", movies); err != nil {
 		t.Fatal(err)
 	}
 

@@ -32,6 +32,9 @@ type CommunityMapping struct {
 func LoadCommunityMapping(path string) (*CommunityMapping, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
+		if !os.IsNotExist(err) {
+			return nil, fmt.Errorf("read community mapping: %w", err)
+		}
 		slog.Info("downloading community mapping", "url", defaultMappingURL)
 		client := &http.Client{Timeout: 30 * time.Second}
 		resp, err := client.Get(defaultMappingURL)
@@ -43,8 +46,10 @@ func LoadCommunityMapping(path string) (*CommunityMapping, error) {
 		if err != nil {
 			return nil, fmt.Errorf("read community mapping response: %w", err)
 		}
-		if err := os.MkdirAll(filepath.Dir(path), 0755); err == nil {
-			os.WriteFile(path, data, 0600)
+		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+			slog.Warn("could not create mapping directory", "path", filepath.Dir(path), "error", err)
+		} else if err := os.WriteFile(path, data, 0600); err != nil {
+			slog.Warn("could not cache mapping file", "path", path, "error", err)
 		}
 	}
 

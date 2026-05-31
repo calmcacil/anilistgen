@@ -26,19 +26,13 @@ blacklist: []               # MAL ID or title substring
 
 output_dir: ./sonarr-lists
 
+base_url: https://lists.calmcacil.dev
+
 community_mapping_path: /tmp/anilistgen_tvdb.yaml   # auto-downloaded
-anime_lists_path: /tmp/anime-list-full.xml           # auto-downloaded
 
 logging:
   level: info
   file: ""
-
-# Optional — not used by the default workflow, but available for scripts
-sonarr:
-  url: ""
-  api_key: ""
-  quality_profile: "HD-1080p"
-  root_folder: "/tv"
 ```
 
 ---
@@ -89,14 +83,14 @@ Directory where JSON files are written.
 Path to the shinkro/community-mapping YAML file (MAL ID → TVDB ID).
 Auto-downloaded if the file doesn't exist.
 
-### `anime_lists_path`
+### `base_url`
 
 | Type | Default |
 |---|---|
-| `string` | `/tmp/anime-list-full.xml` |
+| `string` | `https://lists.calmcacil.dev` |
 
-Path to the Anime-Lists XML file (AniList ID → TVDB ID).
-Auto-downloaded if the file doesn't exist.
+Base URL used in the generated index page for copy-to-clipboard URLs.
+Override when self-hosting on a custom domain.
 
 ### `logging`
 
@@ -104,18 +98,6 @@ Auto-downloaded if the file doesn't exist.
 |---|---|---|---|
 | `level` | `string` | `"info"` | `debug`, `info`, `warn`, `error` |
 | `file` | `string` | `""` | Log file path. Empty = stderr. |
-
-### `sonarr`
-
-| Field | Type | Default | Description |
-|---|---|---|---|
-| `url` | `string` | `""` | Sonarr instance URL |
-| `api_key` | `string` | `""` | Sonarr API key |
-| `quality_profile` | `string` | `"HD-1080p"` | Quality profile name |
-| `root_folder` | `string` | `"/tv"` | Root folder path |
-
-Not used by the default GitHub Actions workflow. Available for custom
-deployments that push directly to Sonarr.
 
 ---
 
@@ -135,14 +117,10 @@ prefix — useful for Docker, CI/CD, or when no config file is present.
 | `ALG_ANILIST_AHEAD_MONTHS` | `anilist.ahead_months` | `3` |
 | `ALG_BLACKLIST` | `blacklist` | `""` |
 | `ALG_OUTPUT_DIR` | `output_dir` | `./sonarr-lists` |
+| `ALG_BASE_URL` | `base_url` | `https://lists.calmcacil.dev` |
 | `ALG_COMMUNITY_MAPPING_PATH` | `community_mapping_path` | `/tmp/anilistgen_tvdb.yaml` |
-| `ALG_ANIME_LISTS_PATH` | `anime_lists_path` | `/tmp/anime-list-full.xml` |
 | `ALG_LOG_LEVEL` | `logging.level` | `info` |
 | `ALG_LOG_FILE` | `logging.file` | `""` |
-| `ALG_SONARR_URL` | `sonarr.url` | `""` |
-| `ALG_SONARR_API_KEY` | `sonarr.api_key` | `""` |
-| `ALG_SONARR_QUALITY_PROFILE` | `sonarr.quality_profile` | `HD-1080p` |
-| `ALG_SONARR_ROOT_FOLDER` | `sonarr.root_folder` | `/tv` |
 
 **Format notes:**
 - Lists (YEARS, SEASONS, BLACKLIST, EXCLUDE_TAGS) use comma separation:

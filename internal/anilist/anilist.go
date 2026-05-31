@@ -78,20 +78,9 @@ func (s Show) IsNew() bool {
 }
 
 // SkipByDuration returns true if the show should be skipped because its
-// per-episode duration is ≤ 10 minutes, or its total runtime
-// (duration × episodes) is ≤ 10 minutes (single-episode shorts).
+// per-episode duration is ≤ 10 minutes.
 func (s Show) SkipByDuration() bool {
-	if s.Duration != nil && *s.Duration <= 10 {
-		return true
-	}
-	// Total runtime check: a single very short episode (e.g. 6 min × 1).
-	if s.Duration != nil && s.Episodes != nil {
-		total := *s.Duration * *s.Episodes
-		if total <= 10 {
-			return true
-		}
-	}
-	return false
+	return s.Duration != nil && *s.Duration <= 10
 }
 
 // HasTag returns true if the show has a tag matching the given name
@@ -126,10 +115,8 @@ func (s Show) IsWithinMonths(months int) bool {
 	if s.StartDate.Year == nil || s.StartDate.Month == nil {
 		return true
 	}
-	now := time.Now()
 	start := time.Date(*s.StartDate.Year, time.Month(*s.StartDate.Month), 1, 0, 0, 0, 0, time.UTC)
-	cutoff := start.Sub(now)
-	return cutoff <= 30*24*time.Hour*time.Duration(months)
+	return !start.After(time.Now().AddDate(0, months, 0))
 }
 
 // DisplayTitle returns the English title if available, falling back to romaji.

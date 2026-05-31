@@ -10,8 +10,6 @@ import (
 	"time"
 )
 
-const baseURL = "https://lists.calmcacil.dev"
-
 type Show struct {
 	TVDBID int    `json:"tvdbId"`
 	Title  string `json:"title,omitempty"`
@@ -47,7 +45,7 @@ func writeJSON(dir, filename string, shows []Show) error {
 	return nil
 }
 
-func WriteAllJSON(outputDir, category string, seasonal map[string][]Show) error {
+func WriteAllJSON(outputDir, baseURL, category string, seasonal map[string][]Show) error {
 	byYear := map[int][]Show{}
 
 	for key, shows := range seasonal {
@@ -73,7 +71,11 @@ func WriteAllJSON(outputDir, category string, seasonal map[string][]Show) error 
 	}
 
 	if category == "series" {
-		if err := WriteIndex(outputDir); err != nil {
+		years := make([]int, 0, len(byYear))
+		for y := range byYear {
+			years = append(years, y)
+		}
+		if err := WriteIndex(outputDir, baseURL, years); err != nil {
 			return fmt.Errorf("write index: %w", err)
 		}
 	}
@@ -81,18 +83,16 @@ func WriteAllJSON(outputDir, category string, seasonal map[string][]Show) error 
 	return nil
 }
 
-func WriteIndex(dir string) error {
-	now := time.Now().Year()
-	// Always include all years from 2010 to next year, regardless of current run
-	yList := []int{}
-	for y := 2010; y <= now+1; y++ {
-		yList = append(yList, y)
+func WriteIndex(dir, baseURL string, years []int) error {
+	if len(years) == 0 {
+		years = append(years, time.Now().Year())
 	}
-	sort.Sort(sort.Reverse(sort.IntSlice(yList)))
+	sort.Sort(sort.Reverse(sort.IntSlice(years)))
 
 	// Build year options HTML
+	now := time.Now().Year()
 	var yearOpts string
-	for _, y := range yList {
+	for _, y := range years {
 		sel := ""
 		if y == now {
 			sel = " selected"

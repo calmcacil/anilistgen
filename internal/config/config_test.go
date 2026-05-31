@@ -16,8 +16,8 @@ func TestFillDefaults(t *testing.T) {
 	if cfg.AniList.MaxPerSeason != DefaultMaxPerSeason {
 		t.Errorf("expected MaxPerSeason %d, got %d", DefaultMaxPerSeason, cfg.AniList.MaxPerSeason)
 	}
-	if cfg.AniList.AheadMonths != 3 {
-		t.Errorf("expected AheadMonths 3, got %d", cfg.AniList.AheadMonths)
+	if cfg.AniList.AheadMonthsOrDefault() != 3 {
+		t.Errorf("expected AheadMonths 3, got %d", cfg.AniList.AheadMonthsOrDefault())
 	}
 	if cfg.OutputDir != "./sonarr-lists" {
 		t.Errorf("expected OutputDir './sonarr-lists', got %q", cfg.OutputDir)
@@ -25,21 +25,22 @@ func TestFillDefaults(t *testing.T) {
 	if cfg.CommunityMappingPath != DefaultMappingPath {
 		t.Errorf("expected CommunityMappingPath %q, got %q", DefaultMappingPath, cfg.CommunityMappingPath)
 	}
-	if cfg.AnimeListsPath != DefaultAnimeListsPath {
-		t.Errorf("expected AnimeListsPath %q, got %q", DefaultAnimeListsPath, cfg.AnimeListsPath)
-	}
 	if cfg.Logging.Level != "info" {
 		t.Errorf("expected Logging.Level 'info', got %q", cfg.Logging.Level)
+	}
+	if cfg.BaseURL != DefaultBaseURL {
+		t.Errorf("expected BaseURL %q, got %q", DefaultBaseURL, cfg.BaseURL)
 	}
 }
 
 func TestFillDefaults_PreservesSetValues(t *testing.T) {
 	t.Parallel()
 
+	v := 6
 	cfg := &Config{
 		AniList: AniListConfig{
 			MaxPerSeason: 50,
-			AheadMonths:   6,
+			AheadMonths:   &v,
 		},
 		OutputDir:  "/custom/output",
 		Logging:    LoggingConfig{Level: "debug"},
@@ -49,8 +50,8 @@ func TestFillDefaults_PreservesSetValues(t *testing.T) {
 	if cfg.AniList.MaxPerSeason != 50 {
 		t.Errorf("expected MaxPerSeason 50, got %d", cfg.AniList.MaxPerSeason)
 	}
-	if cfg.AniList.AheadMonths != 6 {
-		t.Errorf("expected AheadMonths 6, got %d", cfg.AniList.AheadMonths)
+	if cfg.AniList.AheadMonthsOrDefault() != 6 {
+		t.Errorf("expected AheadMonths 6, got %d", cfg.AniList.AheadMonthsOrDefault())
 	}
 	if cfg.OutputDir != "/custom/output" {
 		t.Errorf("expected OutputDir '/custom/output', got %q", cfg.OutputDir)
@@ -345,6 +346,7 @@ func TestSearchPaths_WithCLI(t *testing.T) {
 
 func TestSearchPaths_WithoutCLI(t *testing.T) {
 	os.Unsetenv("XDG_CONFIG_HOME")
+	t.Cleanup(func() { os.Unsetenv("XDG_CONFIG_HOME") })
 
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -434,5 +436,8 @@ func TestDefaultConfig(t *testing.T) {
 	}
 	if cfg.Logging.Level != "info" {
 		t.Errorf("expected Logging.Level 'info', got %q", cfg.Logging.Level)
+	}
+	if cfg.BaseURL != DefaultBaseURL {
+		t.Errorf("expected BaseURL %q, got %q", DefaultBaseURL, cfg.BaseURL)
 	}
 }
