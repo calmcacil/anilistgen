@@ -204,7 +204,7 @@ func runGenerate(configPath string, dryRun bool, outputDir string, verbose bool)
 		new   map[string][]anilist.Show
 	}
 	series := category{label: "series", shows: map[string][]anilist.Show{}, new: map[string][]anilist.Show{}}
-	movies := category{label: "movies", shows: map[string][]anilist.Show{}, new: map[string][]anilist.Show{}}
+	movies := category{label: "movies", shows: map[string][]anilist.Show{}}
 
 	for _, year := range years {
 		for _, season := range seasons {
@@ -248,7 +248,7 @@ func runGenerate(configPath string, dryRun bool, outputDir string, verbose bool)
 				"season", season, "year", year, "count", len(shows))
 
 			var seriesShows, movieShows []anilist.Show
-			var seriesNew, movieNew []anilist.Show
+			var seriesNew []anilist.Show
 			for _, sh := range shows {
 				if sh.IsSeries() {
 					seriesShows = append(seriesShows, sh)
@@ -257,9 +257,6 @@ func runGenerate(configPath string, dryRun bool, outputDir string, verbose bool)
 					}
 				} else {
 					movieShows = append(movieShows, sh)
-					if sh.IsNew() {
-						movieNew = append(movieNew, sh)
-					}
 				}
 			}
 
@@ -284,18 +281,10 @@ func runGenerate(configPath string, dryRun bool, outputDir string, verbose bool)
 			})
 			movieShows = filter.FilterFuture(movieShows, cfg.AniList.AheadMonths)
 
-			movieNew = filter.Filter(movieNew, filter.Config{
-				Blacklist:   cfg.Blacklist,
-				ExcludeTags: cfg.AniList.ExcludeTags,
-				AheadMonths: cfg.AniList.AheadMonths,
-			})
-			movieNew = filter.FilterFuture(movieNew, cfg.AniList.AheadMonths)
-
 			key := fmt.Sprintf("%s-%d", season, year)
 			series.shows[key] = seriesShows
 			series.new[key] = seriesNew
 			movies.shows[key] = movieShows
-			movies.new[key] = movieNew
 		}
 	}
 
@@ -307,7 +296,6 @@ func runGenerate(configPath string, dryRun bool, outputDir string, verbose bool)
 		{label: "series", data: resolveCategory(ctx, resolver, series.shows, dryRun)},
 		{label: "series-new", data: resolveCategory(ctx, resolver, series.new, dryRun)},
 		{label: "movies", data: resolveCategory(ctx, resolver, movies.shows, dryRun)},
-		{label: "movies-new", data: resolveCategory(ctx, resolver, movies.new, dryRun)},
 	}
 
 	if dryRun {
