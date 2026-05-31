@@ -1,4 +1,4 @@
-# Seasonal Anime Lists for Sonarr
+# Seasonal Anime Lists for Sonarr (UNOFFICIAL AniList)
 
 ![Last updated](https://img.shields.io/github/last-commit/calmcacil/sonarr-seasonal-lists/gh-pages?label=last%20updated&color=blue)
 
@@ -25,6 +25,14 @@ Sonarr → Settings → Import Lists → Add → Custom List.
 | `https://lists.calmcacil.dev/2026/series-new.json` | New TV shows for all of 2026 |
 
 ---
+
+## Licenses
+
+| Document | Contents |
+|---|---|
+| [LICENSE](./LICENSE) | MIT License for this project |
+| [NOTICE](./NOTICE) | Third-party attribution notices |
+| [docs/THIRD_PARTY.md](./docs/THIRD_PARTY.md) | Full third-party license details |
 
 ## Further reading
 
