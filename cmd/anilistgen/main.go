@@ -185,7 +185,7 @@ func runGenerate(configPath string, dryRun bool, outputDir string, verbose bool)
 	}
 
 	aniClient := anilist.New()
-	jikan := mapping.NewJikanClient(cfg.CommunityMappingPath + ".jikan_cache.json")
+	jikan := mapping.NewJikanClient("data/jikan_cache.json")
 	var tmdb *mapping.TMDBClient
 	if cfg.TMDBAPIKey != "" {
 		tmdb = mapping.NewTMDBClient(cfg.TMDBAPIKey)
