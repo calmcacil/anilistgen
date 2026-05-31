@@ -17,17 +17,18 @@ func WriteSeasonJSON(dir, category, season string, year int, shows []Show) error
 	if len(shows) == 0 {
 		return nil
 	}
-	prefix := category + "-"
-	filename := fmt.Sprintf("%s%s-%d.json", prefix, strings.ToLower(season), year)
-	return writeJSON(dir, filename, shows)
+	yearDir := filepath.Join(dir, fmt.Sprintf("%d", year))
+	filename := fmt.Sprintf("%s-%s.json", strings.ToLower(season), category)
+	return writeJSON(yearDir, filename, shows)
 }
 
 func WriteYearJSON(dir, category string, year int, shows []Show) error {
 	if len(shows) == 0 {
 		return nil
 	}
-	filename := fmt.Sprintf("%s-%d.json", category, year)
-	return writeJSON(dir, filename, shows)
+	yearDir := filepath.Join(dir, fmt.Sprintf("%d", year))
+	filename := fmt.Sprintf("%s.json", category)
+	return writeJSON(yearDir, filename, shows)
 }
 
 func writeJSON(dir, filename string, shows []Show) error {

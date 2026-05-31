@@ -22,7 +22,7 @@ func TestWriteSeasonJSON(t *testing.T) {
 		t.Fatalf("WriteSeasonJSON: %v", err)
 	}
 
-	path := filepath.Join(dir, "series-winter-2026.json")
+	path := filepath.Join(dir, "2026", "winter-series.json")
 	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read file: %v", err)
@@ -55,7 +55,7 @@ func TestWriteSeasonJSON_Compact(t *testing.T) {
 		t.Fatalf("WriteSeasonJSON: %v", err)
 	}
 
-	path := filepath.Join(dir, "series-spring-2026.json")
+	path := filepath.Join(dir, "2026", "spring-series.json")
 	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read file: %v", err)
@@ -75,7 +75,7 @@ func TestWriteSeasonJSON_SkipsEmpty(t *testing.T) {
 		t.Fatalf("WriteSeasonJSON: %v", err)
 	}
 
-	_, err = os.Stat(filepath.Join(dir, "movies-winter-2026.json"))
+	_, err = os.Stat(filepath.Join(dir, "2026", "winter-movies.json"))
 	if !os.IsNotExist(err) {
 		t.Error("expected no file for empty shows")
 	}
@@ -95,7 +95,7 @@ func TestWriteYearJSON(t *testing.T) {
 		t.Fatalf("WriteYearJSON: %v", err)
 	}
 
-	path := filepath.Join(dir, "series-2026.json")
+	path := filepath.Join(dir, "2026", "series.json")
 	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read file: %v", err)
@@ -118,6 +118,7 @@ func TestWriteAllJSON(t *testing.T) {
 	seasonal := map[string][]Show{
 		"WINTER-2026": {{TVDBID: 1, Title: "Winter Show"}},
 		"SPRING-2026": {{TVDBID: 2, Title: "Spring Show"}},
+		"WINTER-2025": {{TVDBID: 3, Title: "Old Show"}},
 	}
 
 	err := WriteAllJSON(dir, "series", seasonal)
@@ -130,23 +131,19 @@ func TestWriteAllJSON(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if len(entries) != 3 {
-		t.Fatalf("expected 3 files (2 seasonal + 1 yearly), got %d", len(entries))
+	if len(entries) != 2 {
+		t.Fatalf("expected 2 year directories, got %d", len(entries))
 	}
 
-	files := map[string]bool{}
+	dirs := map[string]bool{}
 	for _, e := range entries {
-		files[e.Name()] = true
+		dirs[e.Name()] = e.IsDir()
 	}
-
-	if !files["series-winter-2026.json"] {
-		t.Error("missing series-winter-2026.json")
+	if !dirs["2025"] {
+		t.Error("missing 2025 dir")
 	}
-	if !files["series-spring-2026.json"] {
-		t.Error("missing series-spring-2026.json")
-	}
-	if !files["series-2026.json"] {
-		t.Error("missing series-2026.json")
+	if !dirs["2026"] {
+		t.Error("missing 2026 dir")
 	}
 }
 
@@ -161,7 +158,7 @@ func TestWriteSeasonJSON_StartsAsArray(t *testing.T) {
 		t.Fatalf("WriteSeasonJSON: %v", err)
 	}
 
-	path := filepath.Join(dir, "movies-fall-2026.json")
+	path := filepath.Join(dir, "2026", "fall-movies.json")
 	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read file: %v", err)
@@ -190,22 +187,13 @@ func TestWriteAllJSON_MultipleCategories(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	entries, _ := os.ReadDir(dir)
-	names := map[string]bool{}
-	for _, e := range entries {
-		names[e.Name()] = true
+	check := func(path string) {
+		if _, err := os.Stat(filepath.Join(dir, path)); err != nil {
+			t.Errorf("missing %s", path)
+		}
 	}
-
-	if !names["series-winter-2026.json"] {
-		t.Error("missing series-winter-2026.json")
-	}
-	if !names["movies-winter-2026.json"] {
-		t.Error("missing movies-winter-2026.json")
-	}
-	if !names["series-2026.json"] {
-		t.Error("missing series-2026.json")
-	}
-	if !names["movies-2026.json"] {
-		t.Error("missing movies-2026.json")
-	}
+	check("2026/winter-series.json")
+	check("2026/winter-movies.json")
+	check("2026/series.json")
+	check("2026/movies.json")
 }
