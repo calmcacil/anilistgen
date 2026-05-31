@@ -15,7 +15,7 @@ Run your own instance — either locally or on your own GitHub repo.
 
 ```bash
 # Clone
-git clone https://github.com/calmcacil/anilistgen.git
+git clone https://github.com/calmcacil/sonarr-seasonal-lists.git
 cd anilistgen
 
 # Build
@@ -99,7 +99,7 @@ Run the exact same setup as the hosted repo on your own GitHub account.
 
 ### 1. Fork the repo
 
-Click Fork on [github.com/calmcacil/anilistgen](https://github.com/calmcacil/anilistgen).
+Click Fork on [github.com/calmcacil/sonarr-seasonal-lists](https://github.com/calmcacil/sonarr-seasonal-lists).
 
 ### 2. Enable GitHub Pages
 

@@ -6,18 +6,18 @@ Add any URL below to Sonarr → Settings → Import Lists → Add → Custom Lis
 
 | URL | What it includes |
 |---|---|
-| `https://calmcacil.github.io/anilistgen/series-winter-2026.json` | TV shows airing Winter 2026 |
-| `https://calmcacil.github.io/anilistgen/series-spring-2026.json` | TV shows airing Spring 2026 |
-| `https://calmcacil.github.io/anilistgen/series-summer-2026.json` | TV shows airing Summer 2026 |
-| `https://calmcacil.github.io/anilistgen/series-fall-2026.json` | TV shows airing Fall 2026 |
-| `https://calmcacil.github.io/anilistgen/series-new-winter-2026.json` | New TV shows only (no sequels) |
-| `https://calmcacil.github.io/anilistgen/series-new-spring-2026.json` | New TV shows only (no sequels) |
-| `https://calmcacil.github.io/anilistgen/series-new-summer-2026.json` | New TV shows only (no sequels) |
-| `https://calmcacil.github.io/anilistgen/series-new-fall-2026.json` | New TV shows only (no sequels) |
-| `https://calmcacil.github.io/anilistgen/movies-winter-2026.json` | Movies, OVAs, specials airing Winter 2026 |
-| `https://calmcacil.github.io/anilistgen/movies-2026.json` | All movies, OVAs, specials for 2026 |
-| `https://calmcacil.github.io/anilistgen/series-2026.json` | All TV shows for all of 2026 |
-| `https://calmcacil.github.io/anilistgen/series-new-2026.json` | New TV shows for all of 2026 |
+| `https://calmcacil.github.io/sonarr-seasonal-lists/series-winter-2026.json` | TV shows airing Winter 2026 |
+| `https://calmcacil.github.io/sonarr-seasonal-lists/series-spring-2026.json` | TV shows airing Spring 2026 |
+| `https://calmcacil.github.io/sonarr-seasonal-lists/series-summer-2026.json` | TV shows airing Summer 2026 |
+| `https://calmcacil.github.io/sonarr-seasonal-lists/series-fall-2026.json` | TV shows airing Fall 2026 |
+| `https://calmcacil.github.io/sonarr-seasonal-lists/series-new-winter-2026.json` | New TV shows only (no sequels) |
+| `https://calmcacil.github.io/sonarr-seasonal-lists/series-new-spring-2026.json` | New TV shows only (no sequels) |
+| `https://calmcacil.github.io/sonarr-seasonal-lists/series-new-summer-2026.json` | New TV shows only (no sequels) |
+| `https://calmcacil.github.io/sonarr-seasonal-lists/series-new-fall-2026.json` | New TV shows only (no sequels) |
+| `https://calmcacil.github.io/sonarr-seasonal-lists/movies-winter-2026.json` | Movies, OVAs, specials airing Winter 2026 |
+| `https://calmcacil.github.io/sonarr-seasonal-lists/movies-2026.json` | All movies, OVAs, specials for 2026 |
+| `https://calmcacil.github.io/sonarr-seasonal-lists/series-2026.json` | All TV shows for all of 2026 |
+| `https://calmcacil.github.io/sonarr-seasonal-lists/series-new-2026.json` | New TV shows for all of 2026 |
 
 ---
 
