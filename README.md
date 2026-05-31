@@ -18,11 +18,13 @@ publishes lists every Sunday to GitHub Pages. Add any of these URLs to
 Sonarr:
 
 ```
-https://calmcacil.github.io/anilistgen/winter-2026.json
-https://calmcacil.github.io/anilistgen/spring-2026.json
-https://calmcacil.github.io/anilistgen/summer-2026.json
-https://calmcacil.github.io/anilistgen/fall-2026.json
-https://calmcacil.github.io/anilistgen/2026.json
+https://calmcacil.github.io/anilistgen/series-winter-2026.json
+https://calmcacil.github.io/anilistgen/series-spring-2026.json
+https://calmcacil.github.io/anilistgen/series-summer-2026.json
+https://calmcacil.github.io/anilistgen/series-fall-2026.json
+https://calmcacil.github.io/anilistgen/series-2026.json
+https://calmcacil.github.io/anilistgen/movies-winter-2026.json
+https://calmcacil.github.io/anilistgen/movies-2026.json
 ```
 
 Sonarr → Settings → Import Lists → Add → Custom List → paste URL.
@@ -131,15 +133,21 @@ Lists are comma-separated (`2026,2027`). Booleans accept `true`/`1` or `false`/`
 
 ## Output format
 
-Both per-season and yearly files are bare JSON arrays — Sonarr's Custom
-List import expects this exactly.
+Files are bare JSON arrays — Sonarr's Custom List import expects this
+exactly. Output is split by category:
 
-**`winter-2026.json`** (and `2026.json`):
+| Prefix | Contents |
+|---|---|
+| `series-` | TV and ONA shows |
+| `movies-` | Movies, OVAs, and specials |
+
+**`series-winter-2026.json`** (and `series-2026.json`):
 ```json
 [{"tvdbId":377543,"title":"..."},{"tvdbId":424536,"title":"..."}]
 ```
 
 JSON is minified. Sonarr reads `tvdbId`; `title` is cosmetic.
+Empty categories are skipped.
 
 ---
 

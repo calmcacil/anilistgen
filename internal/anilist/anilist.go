@@ -37,6 +37,11 @@ type Show struct {
 	StartDate FuzzyDate `json:"startDate"`
 }
 
+// IsSeries returns true if the show is a series (TV, ONA) rather than a movie (MOVIE, OVA, SPECIAL).
+func (s Show) IsSeries() bool {
+	return s.Format == "TV" || s.Format == "ONA"
+}
+
 // SkipByDuration returns true if the show should be skipped because its
 // per-episode duration is ≤ 10 minutes, or its total runtime
 // (duration × episodes) is ≤ 10 minutes (single-episode shorts).
@@ -173,14 +178,9 @@ func (c *Client) throttle() {
 	c.lastCall = time.Now()
 }
 
-// FetchSeason returns all TV/ONA anime for the given season and year.
-// If includeONA is true, both TV and ONA formats are fetched; otherwise only TV.
+// FetchSeason returns anime for the given season, year, and formats.
 // Results are capped at maxResults. Paginates through AniList's 50-per-page limit.
-func (c *Client) FetchSeason(ctx context.Context, season string, year int, maxResults int, includeONA bool) ([]Show, error) {
-	formats := []string{"TV"}
-	if includeONA {
-		formats = append(formats, "ONA")
-	}
+func (c *Client) FetchSeason(ctx context.Context, season string, year int, maxResults int, formats []string) ([]Show, error) {
 
 	perPage := maxPerPage
 	if maxResults > 0 && maxResults < perPage {

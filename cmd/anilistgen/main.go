@@ -187,19 +187,29 @@ func runGenerate(configPath string, dryRun bool, outputDir string, verbose bool)
 	aniClient := anilist.New()
 	resolver := mapping.NewResolver(cm, alm)
 
+	formats := []string{"TV", "MOVIE", "OVA", "SPECIAL"}
+	if cfg.AniList.IncludeONA {
+		formats = append(formats, "ONA")
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
 
 	years := cfg.AniList.YearsOrDefault()
 	seasons := cfg.AniList.Season()
 
-	allShows := map[string][]anilist.Show{}
+	type category struct {
+		label string
+		shows map[string][]anilist.Show
+	}
+	series := category{label: "series", shows: map[string][]anilist.Show{}}
+	movies := category{label: "movies", shows: map[string][]anilist.Show{}}
 
 	for _, year := range years {
 		for _, season := range seasons {
 			slog.Info("fetching season", "season", season, "year", year)
 
-			shows, err := aniClient.FetchSeason(ctx, season, year, cfg.AniList.MaxPerSeason, cfg.AniList.IncludeONA)
+			shows, err := aniClient.FetchSeason(ctx, season, year, cfg.AniList.MaxPerSeason, formats)
 			if err != nil {
 				slog.Error("fetch failed", "season", season, "year", year, "error", err)
 				continue
@@ -208,7 +218,7 @@ func runGenerate(configPath string, dryRun bool, outputDir string, verbose bool)
 			if cfg.AniList.WinterOverflow && season == "WINTER" {
 				overflowYear := year - 1
 				overflow, err := aniClient.FetchSeason(ctx, season, overflowYear,
-					cfg.AniList.MaxPerSeason, cfg.AniList.IncludeONA)
+					cfg.AniList.MaxPerSeason, formats)
 				if err != nil {
 					slog.Warn("winter overflow fetch failed, continuing without overflow",
 						"year", overflowYear, "error", err)
@@ -236,22 +246,68 @@ func runGenerate(configPath string, dryRun bool, outputDir string, verbose bool)
 			slog.Info("fetched shows from AniList",
 				"season", season, "year", year, "count", len(shows))
 
-			shows = filter.Filter(shows, filter.Config{
+			var seriesShows, movieShows []anilist.Show
+			for _, sh := range shows {
+				if sh.IsSeries() {
+					seriesShows = append(seriesShows, sh)
+				} else {
+					movieShows = append(movieShows, sh)
+				}
+			}
+
+			seriesShows = filter.Filter(seriesShows, filter.Config{
 				Blacklist:   cfg.Blacklist,
 				ExcludeTags: cfg.AniList.ExcludeTags,
 				AheadMonths: cfg.AniList.AheadMonths,
 			})
+			seriesShows = filter.FilterFuture(seriesShows, cfg.AniList.AheadMonths)
 
-			shows = filter.FilterFuture(shows, cfg.AniList.AheadMonths)
+			movieShows = filter.Filter(movieShows, filter.Config{
+				Blacklist:   cfg.Blacklist,
+				ExcludeTags: cfg.AniList.ExcludeTags,
+				AheadMonths: cfg.AniList.AheadMonths,
+			})
+			movieShows = filter.FilterFuture(movieShows, cfg.AniList.AheadMonths)
 
 			key := fmt.Sprintf("%s-%d", season, year)
-			allShows[key] = shows
+			series.shows[key] = seriesShows
+			movies.shows[key] = movieShows
 		}
 	}
 
-	seasonalOutput := map[string][]output.Show{}
+	type catResult struct {
+		label string
+		data  map[string][]output.Show
+	}
+	results := []catResult{
+		{label: "series", data: resolveCategory(ctx, resolver, series.shows, dryRun)},
+		{label: "movies", data: resolveCategory(ctx, resolver, movies.shows, dryRun)},
+	}
 
-	for key, shows := range allShows {
+	if dryRun {
+		return nil
+	}
+
+	for _, r := range results {
+		if err := output.WriteAllJSON(outputDir, r.label, r.data); err != nil {
+			return fmt.Errorf("write %s JSON: %w", r.label, err)
+		}
+	}
+
+	var total int
+	for _, r := range results {
+		for _, shows := range r.data {
+			total += len(shows)
+		}
+	}
+	slog.Info("output written", "dir", outputDir, "total_resolved", total)
+
+	return nil
+}
+
+func resolveCategory(ctx context.Context, resolver *mapping.Resolver, all map[string][]anilist.Show, dryRun bool) map[string][]output.Show {
+	out := map[string][]output.Show{}
+	for key, shows := range all {
 		parts := strings.SplitN(key, "-", 2)
 		season := parts[0]
 		var year int
@@ -259,11 +315,11 @@ func runGenerate(configPath string, dryRun bool, outputDir string, verbose bool)
 
 		rs := resolver.ResolveBatch(ctx, shows)
 
-		var resolvedShows []output.Show
+		var resolved []output.Show
 		var unmatched int
 		for _, show := range shows {
 			if r, ok := rs[show.ID]; ok && r.Resolved {
-				resolvedShows = append(resolvedShows, output.Show{
+				resolved = append(resolved, output.Show{
 					TVDBID: r.TVDBID,
 					Title:  r.Title,
 				})
@@ -274,34 +330,16 @@ func runGenerate(configPath string, dryRun bool, outputDir string, verbose bool)
 
 		if dryRun {
 			fmt.Printf("\n[%s %d] %d shows (%d resolved, %d unmatched)\n",
-				season, year, len(shows), len(resolvedShows), unmatched)
-			for _, s := range resolvedShows {
+				season, year, len(shows), len(resolved), unmatched)
+			for _, s := range resolved {
 				fmt.Printf("  TVDB %d — %s\n", s.TVDBID, s.Title)
 			}
 			continue
 		}
 
-		seasonalOutput[key] = resolvedShows
+		out[key] = resolved
 	}
-
-	if dryRun {
-		return nil
-	}
-
-	if err := output.WriteAllJSON(outputDir, seasonalOutput); err != nil {
-		return fmt.Errorf("write JSON output: %w", err)
-	}
-
-	totalShows := 0
-	for _, shows := range seasonalOutput {
-		totalShows += len(shows)
-	}
-
-	slog.Info("output written",
-		"dir", outputDir,
-		"total_resolved", totalShows)
-
-	return nil
+	return out
 }
 
 func setupLogging(cfg *config.Config, verbose bool) (func(), error) {
