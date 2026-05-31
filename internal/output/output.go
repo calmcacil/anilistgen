@@ -88,15 +88,7 @@ func WriteIndex(dir string) error {
 	for y := 2010; y <= now+1; y++ {
 		yList = append(yList, y)
 	}
-	sort.Slice(yList, func(i, j int) bool {
-		a, b := yList[i], yList[j]
-		prio := func(y int) int {
-			if y == now { return 9999 }
-			if y == now+1 { return 9998 }
-			return y
-		}
-		return prio(a) > prio(b)
-	})
+	sort.Sort(sort.Reverse(sort.IntSlice(yList)))
 
 	// Build year options HTML
 	var yearOpts string
