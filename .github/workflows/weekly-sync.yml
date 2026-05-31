@@ -38,7 +38,6 @@ jobs:
       - run: ./anilistgen -output ./out
         env:
           ALG_ANILIST_YEARS: ${{ env.ALG_ANILIST_YEARS }}
-          ALG_TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
 
       - uses: peaceiris/actions-gh-pages@v3
         with:

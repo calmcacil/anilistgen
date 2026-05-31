@@ -17,7 +17,7 @@ type Config struct {
 	OutputDir string        `yaml:"output_dir"`
 	CommunityMappingPath string `yaml:"community_mapping_path"`
 	AnimeListsPath       string `yaml:"anime_lists_path"`
-	TMDBAPIKey string        `yaml:"tmdb_api_key"`
+	OfflineDBPath        string `yaml:"offline_db_path"`
 	Logging  LoggingConfig `yaml:"logging"`
 	Sonarr   SonarrConfig  `yaml:"sonarr"`
 }
@@ -49,6 +49,7 @@ const (
 	DefaultStateFile    = "/tmp/anilistgen.lastrun"
 	DefaultMappingPath  = "/tmp/anilistgen_tvdb.yaml"
 	DefaultAnimeListsPath = "/tmp/anime-list-full.xml"
+	DefaultOfflineDBPath  = "/tmp/anime-offline-database.json"
 )
 
 func (a *AniListConfig) Season() []string {
@@ -100,6 +101,9 @@ func (c *Config) FillDefaults() {
 	}
 	if c.AnimeListsPath == "" {
 		c.AnimeListsPath = DefaultAnimeListsPath
+	}
+	if c.OfflineDBPath == "" {
+		c.OfflineDBPath = DefaultOfflineDBPath
 	}
 	if c.Logging.Level == "" {
 		c.Logging.Level = "info"
@@ -233,10 +237,6 @@ func (c *Config) applyEnvOverrides() {
 		c.AnimeListsPath = v
 	}
 
-	if v := os.Getenv(envPrefix + "TMDB_API_KEY"); v != "" {
-		c.TMDBAPIKey = v
-	}
-
 	if v := os.Getenv(envPrefix + "LOG_LEVEL"); v != "" {
 		c.Logging.Level = v
 	}
@@ -302,7 +302,7 @@ func loadFile(path string) (*Config, error) {
 		"output_dir":             true,
 		"community_mapping_path": true,
 		"anime_lists_path":       true,
-		"tmdb_api_key":           true,
+		"offline_db_path":        true,
 		"logging":                true,
 		"sonarr":                 true,
 	}

@@ -179,21 +179,10 @@ func runGenerate(configPath string, dryRun bool, outputDir string, verbose bool)
 		return fmt.Errorf("load community mapping: %w", err)
 	}
 
-	alm, err := mapping.LoadAnimeListsMapping(cfg.AnimeListsPath)
-	if err != nil {
-		return fmt.Errorf("load anime-lists mapping: %w", err)
-	}
-
 	aniClient := anilist.New()
-	jikan := mapping.NewJikanClient("data/jikan_cache.json")
-	var tmdb *mapping.TMDBClient
-	if cfg.TMDBAPIKey != "" {
-		tmdb = mapping.NewTMDBClient(cfg.TMDBAPIKey)
-		slog.Info("TMDB search enabled for movie fallback")
-	}
-	resolver := mapping.NewResolver(cm, alm, jikan, tmdb)
+	resolver := mapping.NewResolver(cm)
 
-	formats := []string{"TV", "MOVIE", "OVA", "SPECIAL"}
+	formats := []string{"TV"}
 	if cfg.AniList.IncludeONA {
 		formats = append(formats, "ONA")
 	}
@@ -204,13 +193,8 @@ func runGenerate(configPath string, dryRun bool, outputDir string, verbose bool)
 	years := cfg.AniList.YearsOrDefault()
 	seasons := cfg.AniList.Season()
 
-	type category struct {
-		label string
-		shows map[string][]anilist.Show
-		new   map[string][]anilist.Show
-	}
-	series := category{label: "series", shows: map[string][]anilist.Show{}, new: map[string][]anilist.Show{}}
-	movies := category{label: "movies", shows: map[string][]anilist.Show{}}
+	seriesShows := map[string][]anilist.Show{}
+	seriesNew := map[string][]anilist.Show{}
 
 	for _, year := range years {
 		for _, season := range seasons {
@@ -253,44 +237,33 @@ func runGenerate(configPath string, dryRun bool, outputDir string, verbose bool)
 			slog.Info("fetched shows from AniList",
 				"season", season, "year", year, "count", len(shows))
 
-			var seriesShows, movieShows []anilist.Show
-			var seriesNew []anilist.Show
+			var seasonSeries, seasonNew []anilist.Show
 			for _, sh := range shows {
 				if sh.IsSeries() {
-					seriesShows = append(seriesShows, sh)
+					seasonSeries = append(seasonSeries, sh)
 					if sh.IsNew() {
-						seriesNew = append(seriesNew, sh)
+						seasonNew = append(seasonNew, sh)
 					}
-				} else {
-					movieShows = append(movieShows, sh)
 				}
 			}
 
-			seriesShows = filter.Filter(seriesShows, filter.Config{
+			seasonSeries = filter.Filter(seasonSeries, filter.Config{
 				Blacklist:   cfg.Blacklist,
 				ExcludeTags: cfg.AniList.ExcludeTags,
 				AheadMonths: cfg.AniList.AheadMonths,
 			})
-			seriesShows = filter.FilterFuture(seriesShows, cfg.AniList.AheadMonths)
+			seasonSeries = filter.FilterFuture(seasonSeries, cfg.AniList.AheadMonths)
 
-			seriesNew = filter.Filter(seriesNew, filter.Config{
+			seasonNew = filter.Filter(seasonNew, filter.Config{
 				Blacklist:   cfg.Blacklist,
 				ExcludeTags: cfg.AniList.ExcludeTags,
 				AheadMonths: cfg.AniList.AheadMonths,
 			})
-			seriesNew = filter.FilterFuture(seriesNew, cfg.AniList.AheadMonths)
-
-			movieShows = filter.Filter(movieShows, filter.Config{
-				Blacklist:   cfg.Blacklist,
-				ExcludeTags: cfg.AniList.ExcludeTags,
-				AheadMonths: cfg.AniList.AheadMonths,
-			})
-			movieShows = filter.FilterFuture(movieShows, cfg.AniList.AheadMonths)
+			seasonNew = filter.FilterFuture(seasonNew, cfg.AniList.AheadMonths)
 
 			key := fmt.Sprintf("%s-%d", season, year)
-			series.shows[key] = seriesShows
-			series.new[key] = seriesNew
-			movies.shows[key] = movieShows
+			seriesShows[key] = seasonSeries
+			seriesNew[key] = seasonNew
 		}
 	}
 
@@ -312,23 +285,19 @@ func runGenerate(configPath string, dryRun bool, outputDir string, verbose bool)
 			})
 			shows = filter.FilterFuture(shows, cfg.AniList.AheadMonths)
 
-			var seriesShows, movieShows []anilist.Show
-			var seriesNew []anilist.Show
+			var seasonSeries, seasonNew []anilist.Show
 			for _, sh := range shows {
 				if sh.IsSeries() {
-					seriesShows = append(seriesShows, sh)
+					seasonSeries = append(seasonSeries, sh)
 					if sh.IsNew() {
-						seriesNew = append(seriesNew, sh)
+						seasonNew = append(seasonNew, sh)
 					}
-				} else {
-					movieShows = append(movieShows, sh)
 				}
 			}
 
 			key := fmt.Sprintf("WINTER-%d", nextWinter)
-			series.shows[key] = seriesShows
-			series.new[key] = seriesNew
-			movies.shows[key] = movieShows
+			seriesShows[key] = seasonSeries
+			seriesNew[key] = seasonNew
 		}
 	}
 
@@ -337,9 +306,8 @@ func runGenerate(configPath string, dryRun bool, outputDir string, verbose bool)
 		data  map[string][]output.Show
 	}
 	results := []catResult{
-		{label: "series", data: resolveCategory(ctx, resolver, series.shows, dryRun, false)},
-		{label: "series-new", data: resolveCategory(ctx, resolver, series.new, dryRun, false)},
-		{label: "movies", data: resolveCategory(ctx, resolver, movies.shows, dryRun, true)},
+		{label: "series", data: resolveBatch(resolver, seriesShows, dryRun)},
+		{label: "series-new", data: resolveBatch(resolver, seriesNew, dryRun)},
 	}
 
 	if dryRun {
@@ -363,7 +331,7 @@ func runGenerate(configPath string, dryRun bool, outputDir string, verbose bool)
 	return nil
 }
 
-func resolveCategory(ctx context.Context, resolver *mapping.Resolver, all map[string][]anilist.Show, dryRun bool, isMovies bool) map[string][]output.Show {
+func resolveBatch(resolver *mapping.Resolver, all map[string][]anilist.Show, dryRun bool) map[string][]output.Show {
 	out := map[string][]output.Show{}
 	for key, shows := range all {
 		parts := strings.SplitN(key, "-", 2)
@@ -371,40 +339,29 @@ func resolveCategory(ctx context.Context, resolver *mapping.Resolver, all map[st
 		var year int
 		fmt.Sscanf(parts[1], "%d", &year)
 
-		rs := resolver.ResolveBatch(ctx, shows, isMovies)
+		rs := resolver.ResolveBatch(shows)
 
 		var resolved []output.Show
-			var unmatched int
-			for _, show := range shows {
-				if r, ok := rs[show.ID]; ok && r.Resolved {
-					if isMovies && r.TMDBID <= 0 {
-						unmatched++
-						continue
-					}
-					s := output.Show{Title: r.Title}
-					if isMovies {
-						s.TMDBID = r.TMDBID
-					} else {
-						s.TVDBID = r.TVDBID
-					}
-					resolved = append(resolved, s)
-				} else {
-					unmatched++
-				}
+		var unmatched int
+		for _, show := range shows {
+			if r, ok := rs[show.ID]; ok && r.Resolved {
+				resolved = append(resolved, output.Show{
+					TVDBID: r.TVDBID,
+					Title:  r.Title,
+				})
+			} else {
+				unmatched++
 			}
+		}
 
-			if dryRun {
-				fmt.Printf("\n[%s %d] %d shows (%d resolved, %d unmatched)\n",
-					season, year, len(shows), len(resolved), unmatched)
-				for _, s := range resolved {
-					if s.TMDBID > 0 {
-						fmt.Printf("  TMDB %d — %s\n", s.TMDBID, s.Title)
-					} else {
-						fmt.Printf("  TVDB %d — %s\n", s.TVDBID, s.Title)
-					}
-				}
-				continue
+		if dryRun {
+			fmt.Printf("\n[%s %d] %d shows (%d resolved, %d unmatched)\n",
+				season, year, len(shows), len(resolved), unmatched)
+			for _, s := range resolved {
+				fmt.Printf("  TVDB %d — %s\n", s.TVDBID, s.Title)
 			}
+			continue
+		}
 
 		out[key] = resolved
 	}
