@@ -66,18 +66,23 @@ func TestWriteSeasonJSON_Compact(t *testing.T) {
 	}
 }
 
-func TestWriteSeasonJSON_SkipsEmpty(t *testing.T) {
+func TestWriteSeasonJSON_Empty(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	err := WriteSeasonJSON(dir, "movies", "WINTER", 2026, nil)
+	err := WriteSeasonJSON(dir, "series", "WINTER", 2026, nil)
 	if err != nil {
 		t.Fatalf("WriteSeasonJSON: %v", err)
 	}
 
-	_, err = os.Stat(filepath.Join(dir, "2026", "winter-movies.json"))
-	if !os.IsNotExist(err) {
-		t.Error("expected no file for empty shows")
+	path := filepath.Join(dir, "2026", "winter-series.json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read file: %v", err)
+	}
+
+	if string(data) != "[]" {
+		t.Errorf("expected empty array '[]', got %q", string(data))
 	}
 }
 

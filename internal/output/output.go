@@ -14,24 +14,21 @@ type Show struct {
 }
 
 func WriteSeasonJSON(dir, category, season string, year int, shows []Show) error {
-	if len(shows) == 0 {
-		return nil
-	}
 	yearDir := filepath.Join(dir, fmt.Sprintf("%d", year))
 	filename := fmt.Sprintf("%s-%s.json", strings.ToLower(season), category)
 	return writeJSON(yearDir, filename, shows)
 }
 
 func WriteYearJSON(dir, category string, year int, shows []Show) error {
-	if len(shows) == 0 {
-		return nil
-	}
 	yearDir := filepath.Join(dir, fmt.Sprintf("%d", year))
 	filename := fmt.Sprintf("%s.json", category)
 	return writeJSON(yearDir, filename, shows)
 }
 
 func writeJSON(dir, filename string, shows []Show) error {
+	if shows == nil {
+		shows = []Show{}
+	}
 	data, err := json.Marshal(shows)
 	if err != nil {
 		return fmt.Errorf("marshal JSON: %w", err)
