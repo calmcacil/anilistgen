@@ -49,7 +49,6 @@ func writeJSON(dir, filename string, shows []Show) error {
 
 func WriteAllJSON(outputDir, category string, seasonal map[string][]Show) error {
 	byYear := map[int][]Show{}
-	years := map[int]bool{}
 
 	for key, shows := range seasonal {
 		parts := strings.SplitN(key, "-", 2)
@@ -65,7 +64,6 @@ func WriteAllJSON(outputDir, category string, seasonal map[string][]Show) error 
 			return fmt.Errorf("write %s: %w", key, err)
 		}
 		byYear[year] = append(byYear[year], shows...)
-		years[year] = true
 	}
 
 	for year, shows := range byYear {
@@ -75,7 +73,7 @@ func WriteAllJSON(outputDir, category string, seasonal map[string][]Show) error 
 	}
 
 	if category == "series" {
-		if err := WriteIndex(outputDir, years); err != nil {
+		if err := WriteIndex(outputDir); err != nil {
 			return fmt.Errorf("write index: %w", err)
 		}
 	}
@@ -83,20 +81,21 @@ func WriteAllJSON(outputDir, category string, seasonal map[string][]Show) error 
 	return nil
 }
 
-func WriteIndex(dir string, years map[int]bool) error {
-	var yList []int
-	for y := range years {
+func WriteIndex(dir string) error {
+	now := time.Now().Year()
+	// Always include all years from 2010 to next year, regardless of current run
+	yList := []int{}
+	for y := 2010; y <= now+1; y++ {
 		yList = append(yList, y)
 	}
-	now := time.Now().Year()
 	sort.Slice(yList, func(i, j int) bool {
 		a, b := yList[i], yList[j]
 		prio := func(y int) int {
-			if y == now { return 0 }
-			if y == now+1 { return 1 }
-			return 1000 - y
+			if y == now { return 9999 }
+			if y == now+1 { return 9998 }
+			return y
 		}
-		return prio(a) < prio(b)
+		return prio(a) > prio(b)
 	})
 
 	// Build year options HTML
@@ -238,10 +237,12 @@ var seasonLabels = ['Winter','Spring','Summer','Fall'];
 
 function buildGrid() {
   var y = yearSel.value;
+  var now = 2026;
+  var isNextYear = parseInt(y) === now + 1;
+  var count = isNextYear ? 1 : 4;
 
-  // Season boxes
   var sh = '';
-  for (var i = 0; i < 4; i++) {
+  for (var i = 0; i < count; i++) {
     var k = seasonKeys[i];
     var lbl = seasonLabels[i];
     var url = base + '/' + y + '/' + k + '-series.json';
@@ -250,32 +251,28 @@ function buildGrid() {
       + '<div class=\"hdr\"><span class=\"lbl\">' + lbl + '</span><span class=\"badge badge-sonarr\">Sonarr</span></div>'
       + '<div class=\"btn-row\">'
       + '<button class=\"btn btn-copy\" onclick=\"copyUrl(\'' + url + '\')\">Copy URL</button>'
-      + '<button class=\"btn btn-new\" id=\"newBtn' + i + '\" onclick=\"copyNewUrl(\'' + urlNew + '\', ' + i + ')\">New only</button>'
+      + '<button class=\"btn btn-new\" onclick=\"copyUrl(\'' + urlNew + '\')\">New only</button>'
       + '</div></div>';
   }
   seasonGrid.innerHTML = sh;
 
-  // Full year boxes
-  var yh = '';
-  var yearUrl = base + '/' + y + '/series.json';
-  var yearUrlNew = base + '/' + y + '/series-new.json';
-  yh += '<div class=\"box\">'
-    + '<div class=\"hdr\"><span class=\"lbl\">' + y + ' Series</span><span class=\"badge badge-sonarr\">Sonarr</span></div>'
-    + '<div class=\"btn-row\">'
-    + '<button class=\"btn btn-copy\" onclick=\"copyUrl(\'' + yearUrl + '\')\">Copy URL</button>'
-    + '<button class=\"btn btn-new\" id=\"newBtnYear\" onclick=\"copyNewUrl(\'' + yearUrlNew + '\', -1)\">New only</button>'
-    + '</div></div>';
-  yearGrid.innerHTML = yh;
+  if (!isNextYear) {
+    var url = base + '/' + y + '/series.json';
+    var urlNew = base + '/' + y + '/series-new.json';
+    yearGrid.innerHTML = '<div class=\"box\">'
+      + '<div class=\"hdr\"><span class=\"lbl\">' + y + ' Full Year</span><span class=\"badge badge-sonarr\">Sonarr</span></div>'
+      + '<div class=\"btn-row\">'
+      + '<button class=\"btn btn-copy\" onclick=\"copyUrl(\'' + url + '\')\">Copy URL</button>'
+      + '<button class=\"btn btn-new\" onclick=\"copyUrl(\'' + urlNew + '\')\">New only</button>'
+      + '</div></div>';
+  } else {
+    yearGrid.innerHTML = '';
+  }
 }
 
 function copyUrl(url) {
   navigator.clipboard.writeText(url);
   showToast('Copied: ' + url.split('/').pop());
-}
-
-function copyNewUrl(url, id) {
-  navigator.clipboard.writeText(url);
-  showToast('Copied (new only): ' + url.split('/').pop());
 }
 
 function showToast(msg) {
