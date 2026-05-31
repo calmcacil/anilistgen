@@ -218,6 +218,66 @@ func TestDisplayTitle(t *testing.T) {
 	})
 }
 
+func TestIsWinterStart(t *testing.T) {
+	t.Parallel()
+
+	t.Run("nil month", func(t *testing.T) {
+		s := Show{StartDate: FuzzyDate{Month: nil}}
+		if !s.IsWinterStart() {
+			t.Error("expected true when month is nil")
+		}
+	})
+
+	t.Run("december", func(t *testing.T) {
+		s := Show{StartDate: FuzzyDate{Month: makePtr(12)}}
+		if !s.IsWinterStart() {
+			t.Error("expected true for December")
+		}
+	})
+
+	t.Run("january", func(t *testing.T) {
+		s := Show{StartDate: FuzzyDate{Month: makePtr(1)}}
+		if !s.IsWinterStart() {
+			t.Error("expected true for January")
+		}
+	})
+
+	t.Run("february", func(t *testing.T) {
+		s := Show{StartDate: FuzzyDate{Month: makePtr(2)}}
+		if !s.IsWinterStart() {
+			t.Error("expected true for February")
+		}
+	})
+
+	t.Run("march", func(t *testing.T) {
+		s := Show{StartDate: FuzzyDate{Month: makePtr(3)}}
+		if !s.IsWinterStart() {
+			t.Error("expected true for March")
+		}
+	})
+
+	t.Run("april", func(t *testing.T) {
+		s := Show{StartDate: FuzzyDate{Month: makePtr(4)}}
+		if s.IsWinterStart() {
+			t.Error("expected false for April")
+		}
+	})
+
+	t.Run("july", func(t *testing.T) {
+		s := Show{StartDate: FuzzyDate{Month: makePtr(7)}}
+		if s.IsWinterStart() {
+			t.Error("expected false for July")
+		}
+	})
+
+	t.Run("november", func(t *testing.T) {
+		s := Show{StartDate: FuzzyDate{Month: makePtr(11)}}
+		if s.IsWinterStart() {
+			t.Error("expected false for November")
+		}
+	})
+}
+
 func makePtr[T any](v T) *T {
 	return &v
 }
