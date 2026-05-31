@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/calmcacil/anilistgen/internal/anilist"
@@ -70,7 +72,7 @@ func run() error {
 
 	args := flags.Args()
 	subcommand := ""
-	if len(args) > 0 && args[0] != "help" && args[0] != "h" {
+	if len(args) > 0 {
 		subcommand = args[0]
 	}
 
@@ -79,6 +81,9 @@ func run() error {
 		return runInitConfig(configPath)
 	case "validate":
 		return runValidate(configPath, verbose)
+	case "help", "h":
+		printUsage()
+		return nil
 	default:
 		return runGenerate(configPath, dryRun, outputDir, verbose)
 	}
@@ -190,6 +195,18 @@ func runGenerate(configPath string, dryRun bool, outputDir string, verbose bool)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
 
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		select {
+		case sig := <-sigCh:
+			slog.Warn("received signal, shutting down", "signal", sig)
+			cancel()
+		case <-ctx.Done():
+		}
+	}()
+
+	aheadMonths := cfg.AniList.AheadMonthsOrDefault()
 	years := cfg.AniList.YearsOrDefault()
 	seasons := cfg.AniList.Season()
 
@@ -250,16 +267,16 @@ func runGenerate(configPath string, dryRun bool, outputDir string, verbose bool)
 			seasonSeries = filter.Filter(seasonSeries, filter.Config{
 				Blacklist:   cfg.Blacklist,
 				ExcludeTags: cfg.AniList.ExcludeTags,
-				AheadMonths: cfg.AniList.AheadMonths,
+				AheadMonths: aheadMonths,
 			})
-			seasonSeries = filter.FilterFuture(seasonSeries, cfg.AniList.AheadMonths)
+			seasonSeries = filter.FilterFuture(seasonSeries, aheadMonths)
 
 			seasonNew = filter.Filter(seasonNew, filter.Config{
 				Blacklist:   cfg.Blacklist,
 				ExcludeTags: cfg.AniList.ExcludeTags,
-				AheadMonths: cfg.AniList.AheadMonths,
+				AheadMonths: aheadMonths,
 			})
-			seasonNew = filter.FilterFuture(seasonNew, cfg.AniList.AheadMonths)
+			seasonNew = filter.FilterFuture(seasonNew, aheadMonths)
 
 			key := fmt.Sprintf("%s-%d", season, year)
 			seriesShows[key] = seasonSeries
@@ -281,9 +298,9 @@ func runGenerate(configPath string, dryRun bool, outputDir string, verbose bool)
 			shows = filter.Filter(shows, filter.Config{
 				Blacklist:   cfg.Blacklist,
 				ExcludeTags: cfg.AniList.ExcludeTags,
-				AheadMonths: cfg.AniList.AheadMonths,
+				AheadMonths: aheadMonths,
 			})
-			shows = filter.FilterFuture(shows, cfg.AniList.AheadMonths)
+			shows = filter.FilterFuture(shows, aheadMonths)
 
 			var seasonSeries, seasonNew []anilist.Show
 			for _, sh := range shows {
@@ -315,7 +332,7 @@ func runGenerate(configPath string, dryRun bool, outputDir string, verbose bool)
 	}
 
 	for _, r := range results {
-		if err := output.WriteAllJSON(outputDir, r.label, r.data); err != nil {
+		if err := output.WriteAllJSON(outputDir, cfg.BaseURL, r.label, r.data); err != nil {
 			return fmt.Errorf("write %s JSON: %w", r.label, err)
 		}
 	}
@@ -337,7 +354,10 @@ func resolveBatch(resolver *mapping.Resolver, all map[string][]anilist.Show, dry
 		parts := strings.SplitN(key, "-", 2)
 		season := parts[0]
 		var year int
-		fmt.Sscanf(parts[1], "%d", &year)
+		if _, err := fmt.Sscanf(parts[1], "%d", &year); err != nil {
+			slog.Error("invalid season key", "key", key)
+			continue
+		}
 
 		rs := resolver.ResolveBatch(shows)
 

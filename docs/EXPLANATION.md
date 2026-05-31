@@ -33,8 +33,7 @@ AniList API
     │         • Start date > N months ahead
     ▼
   Resolve — map each show to a TVDB ID:
-    │         1. Anime-Lists XML (AniList ID → TVDB)
-    │         2. Community mapping YAML (MAL ID → TVDB)
+    │         Community mapping YAML (MAL ID → TVDB)
     │
     ▼
   Output — write compact JSON:
@@ -42,37 +41,23 @@ AniList API
               • Yearly aggregate: 2026.json
 ```
 
-## Data sources
-
-### Anime-Lists (primary)
-
-**[Anime-Lists/anime-lists](https://github.com/Anime-Lists/anime-lists)**
-(`anime-list-full.xml`, 1.7MB, ~10,688 entries).
-
-Maps AniList internal IDs to TVDB IDs. Downloaded on first run, cached
-locally. Used as the primary resolution path.
-
-### Community mapping (secondary)
+## Data source
 
 **[shinkro/community-mapping](https://github.com/shinkro/community-mapping)**
-(`tvdb-mal.yaml`, 947KB, ~5,241 entries).
+(`tvdb-mal.yaml`, ~947KB, ~5,241 entries).
 
-Maps MAL IDs directly to TVDB IDs. Covers ~78% of seasonal anime.
-Used as fallback when anime-lists doesn't have an entry.
+Maps MAL IDs directly to TVDB IDs. Downloaded on first run and cached
+locally. Covers ~78% of seasonal anime.
 
-### Resolution order
+### Resolution
 
 ```
-Show from AniList
-  │
-  ├── Anime-Lists (local XML, instant)      → TVDB? → Done (~75%)
-  │
-  └── Community mapping (local YAML, instant) → TVDB? → Done (~78% of remainder)
+Show from AniList → MAL ID → Community mapping → TVDB? → Done
 
-  Not matched → silently skipped (not yet in TVDB)
+Not matched → silently skipped (not yet in TVDB)
 ```
 
-No external API calls during resolution — both mapping files are local.
+No external API calls during resolution — the mapping file is local.
 
 ## Winter overflow
 
@@ -104,8 +89,8 @@ cosmetic.
 
 ## Key design decisions
 
-- **No MDBList** — v2 replaces the MDBList API with local mapping files.
-  No API keys, no rate limits, no external service dependencies.
+- **No MDBList** — v2 replaces the MDBList API with a local community
+  mapping file. No API keys, no rate limits, no external service dependencies.
 
 - **Static files only** — Output is JSON on GitHub Pages. No server needed.
   Sonarr imports directly from the URL.
@@ -116,5 +101,5 @@ cosmetic.
 - **Paginated fetching** — AniList caps responses at 50 per page. The
   client follows `hasNextPage` to collect up to `max_per_season` results.
 
-- **Auto-downloaded mappings** — Both mapping files download on first run
-  and cache locally. No manual setup needed.
+- **Auto-downloaded mapping** — The community mapping file downloads on
+  first run and caches locally. No manual setup needed.

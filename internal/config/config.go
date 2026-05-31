@@ -12,31 +12,22 @@ import (
 )
 
 type Config struct {
-	AniList  AniListConfig  `yaml:"anilist"`
-	Blacklist []string      `yaml:"blacklist"`
-	OutputDir string        `yaml:"output_dir"`
-	CommunityMappingPath string `yaml:"community_mapping_path"`
-	AnimeListsPath       string `yaml:"anime_lists_path"`
-	OfflineDBPath        string `yaml:"offline_db_path"`
-	Logging  LoggingConfig `yaml:"logging"`
-	Sonarr   SonarrConfig  `yaml:"sonarr"`
+	AniList              AniListConfig  `yaml:"anilist"`
+	Blacklist            []string       `yaml:"blacklist"`
+	OutputDir            string         `yaml:"output_dir"`
+	BaseURL              string         `yaml:"base_url"`
+	CommunityMappingPath string         `yaml:"community_mapping_path"`
+	Logging              LoggingConfig  `yaml:"logging"`
 }
 
 type AniListConfig struct {
-	Years         []int    `yaml:"years"`
-	Seasons       []string `yaml:"seasons"`
-	MaxPerSeason  int      `yaml:"max_per_season"`
-	IncludeONA    bool     `yaml:"include_ona"`
-	WinterOverflow bool    `yaml:"winter_overflow"`
-	AheadMonths   int      `yaml:"ahead_months"`
-	ExcludeTags   []string `yaml:"exclude_tags"`
-}
-
-type SonarrConfig struct {
-	URL           string `yaml:"url"`
-	APIKey        string `yaml:"api_key"`
-	QualityProfile string `yaml:"quality_profile"`
-	RootFolder     string `yaml:"root_folder"`
+	Years          []int    `yaml:"years"`
+	Seasons        []string `yaml:"seasons"`
+	MaxPerSeason   int      `yaml:"max_per_season"`
+	IncludeONA     bool     `yaml:"include_ona"`
+	WinterOverflow bool     `yaml:"winter_overflow"`
+	AheadMonths    *int     `yaml:"ahead_months"`
+	ExcludeTags    []string `yaml:"exclude_tags"`
 }
 
 type LoggingConfig struct {
@@ -46,10 +37,8 @@ type LoggingConfig struct {
 
 const (
 	DefaultMaxPerSeason = 100
-	DefaultStateFile    = "/tmp/anilistgen.lastrun"
 	DefaultMappingPath  = "/tmp/anilistgen_tvdb.yaml"
-	DefaultAnimeListsPath = "/tmp/anime-list-full.xml"
-	DefaultOfflineDBPath  = "/tmp/anime-offline-database.json"
+	DefaultBaseURL      = "https://lists.calmcacil.dev"
 )
 
 func (a *AniListConfig) Season() []string {
@@ -86,12 +75,20 @@ func (a *AniListConfig) YearsOrDefault() []int {
 	return []int{time.Now().Year()}
 }
 
+func (a *AniListConfig) AheadMonthsOrDefault() int {
+	if a.AheadMonths != nil {
+		return *a.AheadMonths
+	}
+	return 3
+}
+
 func (c *Config) FillDefaults() {
 	if c.AniList.MaxPerSeason <= 0 {
 		c.AniList.MaxPerSeason = DefaultMaxPerSeason
 	}
-	if c.AniList.AheadMonths == 0 {
-		c.AniList.AheadMonths = 3
+	if c.AniList.AheadMonths == nil {
+		v := 3
+		c.AniList.AheadMonths = &v
 	}
 	if c.OutputDir == "" {
 		c.OutputDir = "./sonarr-lists"
@@ -99,11 +96,8 @@ func (c *Config) FillDefaults() {
 	if c.CommunityMappingPath == "" {
 		c.CommunityMappingPath = DefaultMappingPath
 	}
-	if c.AnimeListsPath == "" {
-		c.AnimeListsPath = DefaultAnimeListsPath
-	}
-	if c.OfflineDBPath == "" {
-		c.OfflineDBPath = DefaultOfflineDBPath
+	if c.BaseURL == "" {
+		c.BaseURL = DefaultBaseURL
 	}
 	if c.Logging.Level == "" {
 		c.Logging.Level = "info"
@@ -142,6 +136,7 @@ func (c *Config) Validate() error {
 }
 
 func DefaultConfig() *Config {
+	v := 3
 	return &Config{
 		AniList: AniListConfig{
 			Years:          nil,
@@ -149,11 +144,11 @@ func DefaultConfig() *Config {
 			MaxPerSeason:   DefaultMaxPerSeason,
 			IncludeONA:     false,
 			WinterOverflow: true,
-			AheadMonths:    3,
+			AheadMonths:    &v,
 		},
 		OutputDir:            "./sonarr-lists",
 		CommunityMappingPath: DefaultMappingPath,
-		AnimeListsPath:       DefaultAnimeListsPath,
+		BaseURL:              DefaultBaseURL,
 		Logging: LoggingConfig{
 			Level: "info",
 			File:  "",
@@ -213,7 +208,7 @@ func (c *Config) applyEnvOverrides() {
 
 	if v := os.Getenv(envPrefix + "ANILIST_AHEAD_MONTHS"); v != "" {
 		if m, err := strconv.Atoi(v); err == nil && m >= 0 {
-			c.AniList.AheadMonths = m
+			c.AniList.AheadMonths = &m
 		}
 	}
 
@@ -229,12 +224,12 @@ func (c *Config) applyEnvOverrides() {
 		c.OutputDir = v
 	}
 
-	if v := os.Getenv(envPrefix + "COMMUNITY_MAPPING_PATH"); v != "" {
-		c.CommunityMappingPath = v
+	if v := os.Getenv(envPrefix + "BASE_URL"); v != "" {
+		c.BaseURL = v
 	}
 
-	if v := os.Getenv(envPrefix + "ANIME_LISTS_PATH"); v != "" {
-		c.AnimeListsPath = v
+	if v := os.Getenv(envPrefix + "COMMUNITY_MAPPING_PATH"); v != "" {
+		c.CommunityMappingPath = v
 	}
 
 	if v := os.Getenv(envPrefix + "LOG_LEVEL"); v != "" {
@@ -243,22 +238,6 @@ func (c *Config) applyEnvOverrides() {
 
 	if v := os.Getenv(envPrefix + "LOG_FILE"); v != "" {
 		c.Logging.File = v
-	}
-
-	if v := os.Getenv(envPrefix + "SONARR_URL"); v != "" {
-		c.Sonarr.URL = v
-	}
-
-	if v := os.Getenv(envPrefix + "SONARR_API_KEY"); v != "" {
-		c.Sonarr.APIKey = v
-	}
-
-	if v := os.Getenv(envPrefix + "SONARR_QUALITY_PROFILE"); v != "" {
-		c.Sonarr.QualityProfile = v
-	}
-
-	if v := os.Getenv(envPrefix + "SONARR_ROOT_FOLDER"); v != "" {
-		c.Sonarr.RootFolder = v
 	}
 }
 
@@ -284,37 +263,27 @@ func Load(path string) (*Config, string, error) {
 }
 
 func loadFile(path string) (*Config, error) {
-	f, err := os.Open(path)
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
-	}
-	defer f.Close()
-
-	var raw map[string]any
-	decoder := yaml.NewDecoder(f)
-	if err := decoder.Decode(&raw); err != nil {
-		return nil, fmt.Errorf("parse %s: %w", path, err)
 	}
 
 	knownKeys := map[string]bool{
 		"anilist":                true,
 		"blacklist":              true,
 		"output_dir":             true,
+		"base_url":               true,
 		"community_mapping_path": true,
-		"anime_lists_path":       true,
-		"offline_db_path":        true,
 		"logging":                true,
-		"sonarr":                 true,
+	}
+	var raw map[string]any
+	if err := yaml.Unmarshal(data, &raw); err != nil {
+		return nil, fmt.Errorf("parse %s: %w", path, err)
 	}
 	for k := range raw {
 		if !knownKeys[k] {
 			fmt.Fprintf(os.Stderr, "warning: config file %s contains unknown key %q\n", path, k)
 		}
-	}
-
-	data, err := yaml.Marshal(raw)
-	if err != nil {
-		return nil, fmt.Errorf("re-marshal config: %w", err)
 	}
 
 	var cfg Config
@@ -381,21 +350,16 @@ blacklist: []
 # Output directory for JSON files
 output_dir: ./sonarr-lists
 
-# Mapping file paths (auto-downloaded if missing)
+# Base URL for the generated index page (used for copy-to-clipboard URLs)
+base_url: https://lists.calmcacil.dev
+
+# Community mapping file path (auto-downloaded if missing)
 community_mapping_path: /tmp/anilistgen_tvdb.yaml
-anime_lists_path: /tmp/anime-list-full.xml
 
 # Logging
 logging:
   level: info
   file: ""
-
-# Optional Sonarr API push (instead of GitHub Pages)
-sonarr:
-  url: ""
-  api_key: ""
-  quality_profile: "HD-1080p"
-  root_folder: "/tv"
 `
 
 	dir := filepath.Dir(path)
