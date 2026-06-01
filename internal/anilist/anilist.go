@@ -56,8 +56,18 @@ type Show struct {
 	Genres    []string       `json:"genres"`
 	Tags      []Tag          `json:"tags"`
 	Status    string         `json:"status"`
+	Season    *string        `json:"season"`
 	StartDate FuzzyDate      `json:"startDate"`
 	Relations *RelationBlock `json:"relations,omitempty"`
+}
+
+// SeasonCode returns the uppercase season string for this show, or "UNKNOWN"
+// if the season field is nil.
+func (s Show) SeasonCode() string {
+	if s.Season == nil {
+		return "UNKNOWN"
+	}
+	return strings.ToUpper(*s.Season)
 }
 
 // IsSeries returns true if the show is a series (TV, ONA) rather than a movie (MOVIE, OVA, SPECIAL).
@@ -145,6 +155,47 @@ func (s Show) DisplayTitle() string {
 	return fmt.Sprintf("Anime #%d", s.ID)
 }
 
+// IsDecemberStart returns true if the show starts in December (month == 12).
+// Used for winter overflow: December-premiering shows from the prior year
+// are merged into the current year's WINTER bucket.
+func (s Show) IsDecemberStart() bool {
+	return s.StartDate.Month != nil && *s.StartDate.Month == 12
+}
+
+// GraphQL query for fetching all shows in a given year (no season filter).
+const yearQueryTemplate = `query($y: Int, $page: Int, $perPage: Int, $formats: [MediaFormat]) {
+	Page(page: $page, perPage: $perPage) {
+		pageInfo {
+			hasNextPage
+			currentPage
+		}
+		media(
+			seasonYear: $y,
+			type: ANIME,
+			sort: POPULARITY_DESC,
+			format_in: $formats
+		) {
+			id
+			idMal
+			title { romaji english }
+			format
+			episodes
+			duration
+			genres
+			tags { name }
+			status
+			season
+			startDate { year month day }
+			relations {
+				edges {
+					node { id idMal title { romaji english } }
+					relationType
+				}
+			}
+		}
+	}
+}`
+
 // GraphQL query for fetching seasonal anime with pagination info.
 const queryTemplate = `query($s: MediaSeason, $y: Int, $page: Int, $perPage: Int, $formats: [MediaFormat]) {
 	Page(page: $page, perPage: $perPage) {
@@ -167,6 +218,7 @@ const queryTemplate = `query($s: MediaSeason, $y: Int, $page: Int, $perPage: Int
 			genres
 			tags { name }
 			status
+			season
 			startDate { year month day }
 			relations {
 				edges {
@@ -238,10 +290,34 @@ func (c *Client) throttle() {
 	c.lastCall = time.Now()
 }
 
-// FetchSeason returns anime for the given season, year, and formats.
-// Results are capped at maxResults. Paginates through AniList's 50-per-page limit.
-func (c *Client) FetchSeason(ctx context.Context, season string, year int, maxResults int, formats []string) ([]Show, error) {
+// fetchPage is the shared pagination driver used by FetchYear and FetchSeason.
+func (c *Client) fetchPage(ctx context.Context, payload map[string]any, year int, label string, page int) (graphqlResponse, error) {
+	c.throttle()
 
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return graphqlResponse{}, fmt.Errorf("marshal payload: %w", err)
+	}
+
+	var resp graphqlResponse
+	if err := c.doRequest(ctx, body, &resp); err != nil {
+		return graphqlResponse{}, fmt.Errorf("fetch %s %d (page %d): %w", label, year, page, err)
+	}
+
+	if len(resp.Errors) > 0 {
+		msgs := make([]string, len(resp.Errors))
+		for i, e := range resp.Errors {
+			msgs[i] = e.Message
+		}
+		return graphqlResponse{}, fmt.Errorf("AniList GraphQL errors: %s", strings.Join(msgs, "; "))
+	}
+
+	return resp, nil
+}
+
+// FetchYear returns all anime for the given year (all seasons combined).
+// Results are capped at maxResults. Paginates through AniList's 50-per-page limit.
+func (c *Client) FetchYear(ctx context.Context, year int, maxResults int, formats []string) ([]Show, error) {
 	perPage := maxPerPage
 	if maxResults > 0 && maxResults < perPage {
 		perPage = maxResults
@@ -257,7 +333,59 @@ func (c *Client) FetchSeason(ctx context.Context, season string, year int, maxRe
 		default:
 		}
 
-		c.throttle()
+		payload := map[string]any{
+			"query": yearQueryTemplate,
+			"variables": map[string]any{
+				"y":       year,
+				"page":    page,
+				"perPage": perPage,
+				"formats": formats,
+			},
+		}
+
+		resp, err := c.fetchPage(ctx, payload, year, fmt.Sprintf("year %d", year), page)
+		if err != nil {
+			return nil, err
+		}
+
+		shows := resp.Data.Page.Media
+		if shows == nil {
+			shows = []Show{}
+		}
+		allShows = append(allShows, shows...)
+
+		if !resp.Data.Page.PageInfo.HasNextPage {
+			break
+		}
+
+		if maxResults > 0 && len(allShows) >= maxResults {
+			allShows = allShows[:maxResults]
+			break
+		}
+
+		page++
+	}
+
+	return allShows, nil
+}
+
+// FetchSeason returns anime for the given season, year, and formats.
+// Results are capped at maxResults. Paginates through AniList's 50-per-page limit.
+func (c *Client) FetchSeason(ctx context.Context, season string, year int, maxResults int, formats []string) ([]Show, error) {
+	perPage := maxPerPage
+	if maxResults > 0 && maxResults < perPage {
+		perPage = maxResults
+	}
+
+	var allShows []Show
+	page := 1
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		default:
+		}
 
 		payload := map[string]any{
 			"query": queryTemplate,
@@ -270,22 +398,9 @@ func (c *Client) FetchSeason(ctx context.Context, season string, year int, maxRe
 			},
 		}
 
-		body, err := json.Marshal(payload)
+		resp, err := c.fetchPage(ctx, payload, year, fmt.Sprintf("%s %d", season, year), page)
 		if err != nil {
-			return nil, fmt.Errorf("marshal payload: %w", err)
-		}
-
-		var resp graphqlResponse
-		if err := c.doRequest(ctx, body, &resp); err != nil {
-			return nil, fmt.Errorf("fetch %s %d (page %d): %w", season, year, page, err)
-		}
-
-		if len(resp.Errors) > 0 {
-			msgs := make([]string, len(resp.Errors))
-			for i, e := range resp.Errors {
-				msgs[i] = e.Message
-			}
-			return nil, fmt.Errorf("AniList GraphQL errors: %s", strings.Join(msgs, "; "))
+			return nil, err
 		}
 
 		shows := resp.Data.Page.Media
