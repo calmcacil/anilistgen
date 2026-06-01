@@ -180,7 +180,7 @@ func runGenerate(configPath string, dryRun bool, outputDir string, verbose bool)
 		outputDir = cfg.OutputDir
 	}
 
-	cm, err := mapping.LoadCommunityMapping(cfg.CommunityMappingPath)
+	cm, err := loadMapping(cfg)
 	if err != nil {
 		return fmt.Errorf("load community mapping: %w", err)
 	}
@@ -266,4 +266,15 @@ func setupLogging(cfg *config.Config, verbose bool) (func(), error) {
 		level = "debug"
 	}
 	return logging.Setup(level, cfg.Logging.File)
+}
+
+func loadMapping(cfg *config.Config) (*mapping.CommunityMapping, error) {
+	if cfg.CommunityMappingMaxAge != "" {
+		maxAge, err := time.ParseDuration(cfg.CommunityMappingMaxAge)
+		if err != nil {
+			return nil, fmt.Errorf("parse community_mapping_max_age %q: %w", cfg.CommunityMappingMaxAge, err)
+		}
+		return mapping.LoadCommunityMappingWithAge(cfg.CommunityMappingPath, maxAge)
+	}
+	return mapping.LoadCommunityMapping(cfg.CommunityMappingPath)
 }

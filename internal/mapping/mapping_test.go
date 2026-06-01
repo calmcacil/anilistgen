@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/calmcacil/anilistgen/internal/model"
 )
@@ -98,13 +99,61 @@ func TestLoadCommunityMapping_ValidFile(t *testing.T) {
 func TestLoadCommunityMapping_MissingFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "nonexistent.yaml")
 
-	// This will attempt a network download, so we expect it to fail
-	// with a non-nil error (file not found is not skipped since the
-	// file doesn't exist and the download should fail in test env).
 	_, err := LoadCommunityMapping(path)
 	if err == nil {
 		t.Skip("network request succeeded unexpectedly — test env may have internet access")
 	}
+}
+
+func TestLoadCommunityMappingWithAge_Fresh(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "tvdb-mal.yaml")
+	content := `AnimeMap:
+  - malid: 16498
+    tvdbid: 12345
+`
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cm, err := LoadCommunityMappingWithAge(path, 24*7*time.Hour)
+	if err != nil {
+		t.Fatalf("LoadCommunityMappingWithAge: %v", err)
+	}
+
+	if tvdbID, ok := cm.Lookup(16498); !ok || tvdbID != 12345 {
+		t.Errorf("expected MAL 16498 → TVDB 12345, got %d, %v", tvdbID, ok)
+	}
+}
+
+func TestLoadCommunityMappingWithAge_Stale(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "tvdb-mal.yaml")
+	content := `AnimeMap:
+  - malid: 16498
+    tvdbid: 12345
+`
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cm, err := LoadCommunityMappingWithAge(path, 0)
+	if err != nil {
+		t.Fatalf("LoadCommunityMappingWithAge: %v", err)
+	}
+
+	if tvdbID, ok := cm.Lookup(16498); !ok || tvdbID != 12345 {
+		t.Errorf("expected MAL 16498 → TVDB 12345, got %d, %v", tvdbID, ok)
+	}
+
+	cm, err = LoadCommunityMappingWithAge(path, -1*time.Nanosecond)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadCommunityMappingWithAge(path, -1*time.Nanosecond); err != nil {
+		t.Fatal(err)
+	}
+	_ = cm
 }
 
 func TestNewResolverAndProject(t *testing.T) {
