@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/calmcacil/anilistgen/internal/model"
@@ -79,29 +80,15 @@ type graphqlResponse struct {
 	Errors []graphqlError `json:"errors,omitempty"`
 }
 
-// Client fetches data from the AniList GraphQL API.
-type Client struct {
-	http          *http.Client
-	apiBase       string
+// Throttle enforces a minimum delay between API calls, with backoff after 429.
+// It is safe for concurrent use.
+type Throttle struct {
+	mu            sync.Mutex
 	lastCall      time.Time
 	lastRateLimit time.Time
 }
 
-// New creates a new AniList client.
-func New() *Client {
-	return &Client{
-		http:    &http.Client{Timeout: 30 * time.Second},
-		apiBase: "https://graphql.anilist.co",
-	}
-}
-
-// NewWithBase creates a client targeting a specific API base URL (for testing).
-func NewWithBase(base string) *Client {
-	return &Client{
-		http:    &http.Client{Timeout: 30 * time.Second},
-		apiBase: base,
-	}
-}
+func newThrottle() *Throttle { return &Throttle{} }
 
 // jitter returns d randomly varied by ±25% to prevent synchronized retry storms.
 func jitter(d time.Duration) time.Duration {
@@ -113,19 +100,51 @@ func jitter(d time.Duration) time.Duration {
 	return d + offset
 }
 
-// throttle ensures we don't exceed AniList rate limits.
-// After a 429 response, backs off to 5s for 30 seconds.
-func (c *Client) throttle() {
+func (t *Throttle) wait() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
 	minDelay := rateLimitDelay
-	if time.Since(c.lastRateLimit) < 30*time.Second {
+	if time.Since(t.lastRateLimit) < 30*time.Second {
 		minDelay = rateLimitBackoff
 	}
 	minDelay = jitter(minDelay)
-	elapsed := time.Since(c.lastCall)
+	elapsed := time.Since(t.lastCall)
 	if elapsed < minDelay {
 		time.Sleep(minDelay - elapsed)
 	}
-	c.lastCall = time.Now()
+	t.lastCall = time.Now()
+}
+
+func (t *Throttle) recordRateLimit() {
+	t.mu.Lock()
+	t.lastRateLimit = time.Now()
+	t.mu.Unlock()
+}
+
+// Client fetches data from the AniList GraphQL API.
+type Client struct {
+	http     *http.Client
+	apiBase  string
+	throttle *Throttle
+}
+
+// New creates a new AniList client.
+func New() *Client {
+	return &Client{
+		http:     &http.Client{Timeout: 30 * time.Second},
+		apiBase:  "https://graphql.anilist.co",
+		throttle: newThrottle(),
+	}
+}
+
+// NewWithBase creates a client targeting a specific API base URL (for testing).
+func NewWithBase(base string) *Client {
+	return &Client{
+		http:     &http.Client{Timeout: 30 * time.Second},
+		apiBase:  base,
+		throttle: newThrottle(),
+	}
 }
 
 // FetchSeason returns anime for the given season, year, and formats.
@@ -147,7 +166,7 @@ func (c *Client) FetchSeason(ctx context.Context, season string, year int, maxRe
 		default:
 		}
 
-		c.throttle()
+		c.throttle.wait()
 
 		payload := map[string]any{
 			"query": queryTemplate,
@@ -201,7 +220,7 @@ func (c *Client) FetchSeason(ctx context.Context, season string, year int, maxRe
 
 // Ping checks connectivity to the AniList API by fetching a single result.
 func (c *Client) Ping(ctx context.Context) error {
-	c.throttle()
+	c.throttle.wait()
 
 	query := `{ Page(perPage: 1) { media(type: ANIME) { id } } }`
 	payload := map[string]any{
@@ -254,7 +273,7 @@ func (c *Client) doRequest(ctx context.Context, payload []byte, dst any) error {
 			continue
 		}
 		if resp.StatusCode == http.StatusTooManyRequests {
-			c.lastRateLimit = time.Now()
+			c.throttle.recordRateLimit()
 			retryAfter := resp.Header.Get("Retry-After")
 			resp.Body.Close()
 			if retryAfter != "" {
