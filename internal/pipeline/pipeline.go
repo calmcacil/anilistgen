@@ -23,6 +23,8 @@ type Deps struct {
 }
 
 type Stats struct {
+	Season    string
+	Year      int
 	Fetched   int
 	Filtered  int
 	Resolved  int
@@ -78,7 +80,7 @@ func Process(ctx context.Context, deps Deps, season string, year int) Result {
 	shows, err := deps.AniClient.FetchSeason(ctx, season, year, deps.MaxPerSeason, deps.Formats)
 	if err != nil {
 		slog.Error("fetch failed", "season", season, "year", year, "error", err)
-		return Result{Key: key, Err: err}
+		return Result{Key: key, Err: err, Stats: Stats{Season: season, Year: year}}
 	}
 
 	stats := Stats{Fetched: len(shows)}
@@ -117,8 +119,14 @@ func Process(ctx context.Context, deps Deps, season string, year int) Result {
 		Key:     key,
 		All:     resolvedAll,
 		NewOnly: resolvedNew,
-		Stats:   stats,
-		Err:     nil,
+		Stats: Stats{
+			Season:    season,
+			Year:      year,
+			Fetched:   stats.Fetched,
+			Resolved:  len(resolvedAll) + len(resolvedNew),
+			Unmatched: len(series) + len(newOnly) - len(resolvedAll) - len(resolvedNew),
+		},
+		Err: nil,
 	}
 }
 

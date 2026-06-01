@@ -220,7 +220,12 @@ func runGenerate(configPath string, dryRun bool, outputDir string, verbose bool)
 		Formats:        formats,
 	}
 
-	seriesAll, seriesNew, _, errs := pipeline.Run(ctx, deps, cfg.AniList.YearsOrDefault(), cfg.AniList.Season())
+	seriesAll, seriesNew, stats, errs := pipeline.Run(ctx, deps, cfg.AniList.YearsOrDefault(), cfg.AniList.Season())
+
+	expectedSeasons := len(cfg.AniList.YearsOrDefault()) * len(cfg.AniList.Season())
+	if len(cfg.AniList.Season()) == 4 && len(cfg.AniList.YearsOrDefault()) > 0 {
+		expectedSeasons++
+	}
 
 	if dryRun {
 		printDryRun(seriesAll, "series")
@@ -228,8 +233,19 @@ func runGenerate(configPath string, dryRun bool, outputDir string, verbose bool)
 		return nil
 	}
 
-	for _, e := range errs {
-		slog.Warn("pipeline error", "error", e)
+	for _, s := range stats {
+		slog.Info("season stats",
+			"season", s.Season, "year", s.Year,
+			"fetched", s.Fetched, "resolved", s.Resolved, "unmatched", s.Unmatched)
+	}
+
+	if len(errs) > 0 {
+		for _, e := range errs {
+			slog.Warn("pipeline error", "error", e)
+		}
+		if len(errs) == expectedSeasons {
+			return fmt.Errorf("all %d seasons failed", len(errs))
+		}
 	}
 
 	if err := output.WriteAllJSON(outputDir, cfg.BaseURL, "series", seriesAll, cfg.IndexYears); err != nil {
