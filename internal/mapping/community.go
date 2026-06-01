@@ -27,6 +27,10 @@ type CommunityMapping struct {
 	data map[int]int
 }
 
+func NewCommunityMapping(data map[int]int) *CommunityMapping {
+	return &CommunityMapping{data: data}
+}
+
 // LoadCommunityMapping reads a YAML TVDB-to-MAL mapping file. If the file
 // does not exist, it downloads the latest community mapping from GitHub.
 func LoadCommunityMapping(path string) (*CommunityMapping, error) {

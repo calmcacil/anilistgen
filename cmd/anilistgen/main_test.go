@@ -7,9 +7,11 @@ import (
 
 	"github.com/calmcacil/anilistgen/internal/mapping"
 	"github.com/calmcacil/anilistgen/internal/model"
+	"github.com/calmcacil/anilistgen/internal/output"
+	"github.com/calmcacil/anilistgen/internal/pipeline"
 )
 
-func TestResolveBatch(t *testing.T) {
+func TestProcessBatch(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "tvdb-mal.yaml")
 	content := `AnimeMap:
@@ -30,17 +32,17 @@ func TestResolveBatch(t *testing.T) {
 
 	winter2026 := model.SeasonKey{Season: "WINTER", Year: 2026}
 
-	result := resolveBatch(resolver, map[model.SeasonKey][]model.Show{}, true)
+	result := pipeline.ProcessBatch(resolver, map[model.SeasonKey][]model.Show{}, true)
 	if len(result) != 0 {
 		t.Errorf("expected empty result for dry-run, got %d entries", len(result))
 	}
 
-	result = resolveBatch(resolver, map[model.SeasonKey][]model.Show{}, false)
+	result = pipeline.ProcessBatch(resolver, map[model.SeasonKey][]model.Show{}, false)
 	if len(result) != 0 {
 		t.Errorf("expected empty result for empty input, got %d entries", len(result))
 	}
 
-	result = resolveBatch(resolver, map[model.SeasonKey][]model.Show{
+	result = pipeline.ProcessBatch(resolver, map[model.SeasonKey][]model.Show{
 		winter2026: nil,
 	}, false)
 	if shows, ok := result[winter2026]; !ok {
@@ -49,14 +51,14 @@ func TestResolveBatch(t *testing.T) {
 		t.Errorf("expected 0 shows for nil input, got %d", len(shows))
 	}
 
-	result = resolveBatch(resolver, map[model.SeasonKey][]model.Show{
+	result = pipeline.ProcessBatch(resolver, map[model.SeasonKey][]model.Show{
 		winter2026: {{ID: 1, IDMal: nil}},
 	}, false)
 	if shows, ok := result[winter2026]; ok && len(shows) != 0 {
 		t.Errorf("expected 0 resolved shows for no IDMal, got %d", len(shows))
 	}
 
-	result = resolveBatch(resolver, map[model.SeasonKey][]model.Show{
+	result = pipeline.ProcessBatch(resolver, map[model.SeasonKey][]model.Show{
 		winter2026: {{ID: 1, IDMal: makePtr(16498)}},
 	}, false)
 	if shows, ok := result[winter2026]; !ok {
@@ -72,13 +74,21 @@ func TestResolveBatch(t *testing.T) {
 			{ID: 1, IDMal: makePtr(16498), Title: model.Title{English: makePtr("Test Show")}},
 			{ID: 2, IDMal: nil},
 		}
-		result := resolveBatch(resolver, map[model.SeasonKey][]model.Show{
+		result := pipeline.ProcessBatch(resolver, map[model.SeasonKey][]model.Show{
 			winter2026: shows,
 		}, true)
 		if len(result) != 0 {
 			t.Error("expected empty result for dry run output")
 		}
 	})
+}
+
+func TestPrintDryRun(t *testing.T) {
+	winter2026 := model.SeasonKey{Season: "WINTER", Year: 2026}
+	data := map[model.SeasonKey][]output.Show{
+		winter2026: {{TVDBID: 12345, Title: "Test Show"}},
+	}
+	printDryRun(data, "series")
 }
 
 func makePtr[T any](v T) *T {

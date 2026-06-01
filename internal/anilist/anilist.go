@@ -17,11 +17,10 @@ import (
 )
 
 const (
-	apiBase           = "https://graphql.anilist.co"
-	maxRetry          = 5
-	rateLimitDelay    = 700 * time.Millisecond
-	rateLimitBackoff  = 5 * time.Second
-	maxPerPage        = 50
+	maxRetry         = 5
+	rateLimitDelay   = 700 * time.Millisecond
+	rateLimitBackoff = 5 * time.Second
+	maxPerPage       = 50
 )
 
 
@@ -82,15 +81,25 @@ type graphqlResponse struct {
 
 // Client fetches data from the AniList GraphQL API.
 type Client struct {
-	http           *http.Client
-	lastCall       time.Time
-	lastRateLimit  time.Time
+	http          *http.Client
+	apiBase       string
+	lastCall      time.Time
+	lastRateLimit time.Time
 }
 
 // New creates a new AniList client.
 func New() *Client {
 	return &Client{
-		http: &http.Client{Timeout: 30 * time.Second},
+		http:    &http.Client{Timeout: 30 * time.Second},
+		apiBase: "https://graphql.anilist.co",
+	}
+}
+
+// NewWithBase creates a client targeting a specific API base URL (for testing).
+func NewWithBase(base string) *Client {
+	return &Client{
+		http:    &http.Client{Timeout: 30 * time.Second},
+		apiBase: base,
 	}
 }
 
@@ -231,7 +240,7 @@ func (c *Client) doRequest(ctx context.Context, payload []byte, dst any) error {
 			time.Sleep(jitter(time.Duration(1<<attempt) * time.Second))
 		}
 
-		req, err := http.NewRequestWithContext(ctx, http.MethodPost, apiBase,
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.apiBase,
 			bytes.NewReader(payload))
 		if err != nil {
 			return fmt.Errorf("create request: %w", err)
