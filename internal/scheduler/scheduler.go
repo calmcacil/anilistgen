@@ -37,7 +37,7 @@ func (s *Scheduler) loadResolver() {
 	if s.resolver != nil {
 		return
 	}
-	cm, err := mapping.LoadCommunityMapping("")
+	cm, err := mapping.LoadCommunityMapping(s.cfg.CommunityMappingPath)
 	if err != nil {
 		slog.Error("failed to load community mapping", "error", err)
 	}
@@ -105,17 +105,14 @@ func (s *Scheduler) refresh(ctx context.Context, season string, year int, catego
 		seasons = config.AllSeasons()
 	}
 
-	var allShows []Show
+	allShows := make([]Show, 0)
 	formats := []string{"TV"}
 	if s.cfg.IncludeONA {
 		formats = append(formats, "ONA")
 	}
 
 	for _, ssn := range seasons {
-		shows := s.processSeason(ctx, ssn, year, formats)
-		if category == "series-new" {
-			shows = filterNew(shows)
-		}
+		shows := s.processSeason(ctx, ssn, year, formats, category)
 		allShows = append(allShows, shows...)
 	}
 
@@ -133,7 +130,7 @@ func (s *Scheduler) refresh(ctx context.Context, season string, year int, catego
 	slog.Info("cached", "season", season, "year", year, "category", category, "shows", len(allShows))
 }
 
-func (s *Scheduler) processSeason(ctx context.Context, season string, year int, formats []string) []Show {
+func (s *Scheduler) processSeason(ctx context.Context, season string, year int, formats []string, category string) []Show {
 	slog.Info("fetching season", "season", season, "year", year)
 
 	shows, err := s.client.FetchSeason(ctx, season, year, s.cfg.MaxPerSeason, formats)
@@ -151,6 +148,10 @@ func (s *Scheduler) processSeason(ctx context.Context, season string, year int, 
 	}
 
 	shows = filterSeries(shows)
+
+	if category == "series-new" {
+		shows = filterNewSeries(shows)
+	}
 
 	shows = filter.Filter(shows, filter.Config{
 		Blacklist:   nil,
@@ -239,8 +240,14 @@ func filterSeries(shows []anilist.Show) []anilist.Show {
 	return out
 }
 
-func filterNew(shows []Show) []Show {
-	return shows
+func filterNewSeries(shows []anilist.Show) []anilist.Show {
+	var out []anilist.Show
+	for _, sh := range shows {
+		if sh.IsNew() {
+			out = append(out, sh)
+		}
+	}
+	return out
 }
 
 func filterWinterMonth(shows []anilist.Show) []anilist.Show {

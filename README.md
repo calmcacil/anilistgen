@@ -41,6 +41,7 @@ All via environment variables:
 | `MAX_PER_SEASON` | `100` | Max shows per season |
 | `INCLUDE_ONA` | `false` | Include ONA format |
 | `CACHE_DB_PATH` | `/data/cache.db` | SQLite file path |
+| `COMMUNITY_MAPPING_PATH` | `/data/tvdb-mal.yaml` | MAL→TVDB mapping cache path |
 | `CACHE_STALE_DAYS` | `14` | Evict entries not hit in N days |
 | `REFRESH_CURRENT_DAYS` | `7` | Refresh interval, current year |
 | `REFRESH_PAST_DAYS` | `30` | Refresh interval, past years |

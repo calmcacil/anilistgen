@@ -16,12 +16,13 @@ type Config struct {
 	WinterOverflow     bool
 	AheadMonths        *int
 	ExcludeTags        []string
-	CacheDBPath        string
-	CacheStaleDays     int
-	RefreshCurrentDays int
-	RefreshPastDays    int
-	AniListTimeoutMin  int
-	LogLevel           string
+	CommunityMappingPath string
+	CacheDBPath          string
+	CacheStaleDays       int
+	RefreshCurrentDays   int
+	RefreshPastDays      int
+	AniListTimeoutMin    int
+	LogLevel             string
 }
 
 const (
@@ -31,7 +32,8 @@ const (
 	DefaultCacheStaleDays     = 14
 	DefaultRefreshCurrentDays = 7
 	DefaultRefreshPastDays    = 30
-	DefaultAniListTimeoutMin  = 10
+	DefaultCommunityMappingPath = "/data/tvdb-mal.yaml"
+	DefaultAniListTimeoutMin    = 10
 )
 
 // AllSeasons returns the four standard anime seasons.
@@ -89,8 +91,9 @@ func Load() *Config {
 		CacheStaleDays:     getEnvInt("CACHE_STALE_DAYS", DefaultCacheStaleDays),
 		RefreshCurrentDays: getEnvInt("REFRESH_CURRENT_DAYS", DefaultRefreshCurrentDays),
 		RefreshPastDays:    getEnvInt("REFRESH_PAST_DAYS", DefaultRefreshPastDays),
-		AniListTimeoutMin:  getEnvInt("ALG_ANILIST_TIMEOUT_MINUTES", DefaultAniListTimeoutMin),
-		LogLevel:           getEnvStr("LOG_LEVEL", "info"),
+		CommunityMappingPath: getEnvStr("COMMUNITY_MAPPING_PATH", DefaultCommunityMappingPath),
+		AniListTimeoutMin:   getEnvInt("ALG_ANILIST_TIMEOUT_MINUTES", DefaultAniListTimeoutMin),
+		LogLevel:            getEnvStr("LOG_LEVEL", "info"),
 	}
 
 	cfg.PrewarmYears = parseYearList("PREWARM_YEARS", []int{time.Now().Year()})
