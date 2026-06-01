@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -137,7 +138,7 @@ func runValidate(configPath string, verbose bool) error {
 	fmt.Printf("Config: %s\n", cfgPath)
 	fmt.Printf("  Years: %v\n", cfg.AniList.YearsOrDefault())
 	fmt.Printf("  Seasons: %s\n", cfg.AniList.Season())
-	fmt.Printf("  Max per season: %d\n", cfg.AniList.MaxPerSeason)
+	fmt.Printf("  Max per year: %d\n", cfg.AniList.MaxPerYear)
 	fmt.Printf("  Include ONA: %t\n", cfg.AniList.IncludeONA)
 	fmt.Printf("  Output dir: %s\n", cfg.OutputDir)
 	fmt.Printf("  Log level: %s\n", cfg.Logging.Level)
@@ -217,21 +218,58 @@ func runGenerate(configPath string, dryRun bool, outputDir string, verbose bool)
 	seriesShows := map[string][]anilist.Show{}
 	seriesNew := map[string][]anilist.Show{}
 
+	hasWinter := slices.Contains(seasons, "WINTER")
+	winterOverflow := cfg.AniList.WinterOverflow
+
 	for _, year := range years {
-		for _, season := range seasons {
-			seasonSeries, seasonNew, err := processSeason(ctx, aniClient, cfg, season, year, formats, aheadMonths)
-			if err != nil {
-				continue
+		slog.Info("fetching year", "year", year)
+		allShows, err := aniClient.FetchYear(ctx, year, cfg.AniList.MaxPerYear, formats)
+		if err != nil {
+			slog.Error("fetch year failed", "year", year, "error", err)
+			continue
+		}
+		slog.Info("fetched shows from AniList", "year", year, "count", len(allShows))
+
+		// Winter overflow: merge December-premiering shows from the previous year.
+		if hasWinter && winterOverflow {
+			priorYear := year - 1
+			needsFetch := !slices.Contains(years, priorYear)
+			if needsFetch {
+				prior, err := aniClient.FetchYear(ctx, priorYear, cfg.AniList.MaxPerYear, formats)
+				if err != nil {
+					slog.Warn("prior year fetch failed for winter overflow",
+						"year", priorYear, "error", err)
+				} else {
+					added := filterDecember(&allShows, prior)
+					if added > 0 {
+						slog.Info("winter overflow merged",
+							"year", year, "overflow_year", priorYear,
+							"added", added)
+					}
+				}
 			}
+		}
+
+		bySeason := groupBySeason(allShows)
+
+		for _, season := range seasons {
+			seasonShows := bySeason[season]
+			if season == "WINTER" {
+				seasonShows = filterWinterMonth(seasonShows, "winter shows")
+			}
+
+			seasonShows = filter.Filter(seasonShows, filter.Config{
+				Blacklist:   cfg.Blacklist,
+				ExcludeTags: cfg.AniList.ExcludeTags,
+			})
+			seasonShows = filter.FilterFuture(seasonShows, aheadMonths)
+
+			seasonSeries, seasonNew := splitSeriesNew(seasonShows)
 
 			key := fmt.Sprintf("%s-%d", season, year)
 			seriesShows[key] = seasonSeries
 			seriesNew[key] = seasonNew
 		}
-	}
-
-	if len(years) > 0 && len(seasons) == 4 {
-		fetchAndAppendNextWinter(ctx, aniClient, cfg, years[len(years)-1], formats, aheadMonths, seriesShows, seriesNew)
 	}
 
 	type catResult struct {
@@ -264,110 +302,39 @@ func runGenerate(configPath string, dryRun bool, outputDir string, verbose bool)
 	return nil
 }
 
-func processSeason(ctx context.Context, client *anilist.Client, cfg *config.Config, season string, year int, formats []string, aheadMonths int) ([]anilist.Show, []anilist.Show, error) {
-	slog.Info("fetching season", "season", season, "year", year)
-
-	shows, err := client.FetchSeason(ctx, season, year, cfg.AniList.MaxPerSeason, formats)
-	if err != nil {
-		slog.Error("fetch failed", "season", season, "year", year, "error", err)
-		return nil, nil, err
+// groupBySeason splits a slice of shows by their AniList season field.
+// Unknown/missing seasons are placed under "UNKNOWN".
+func groupBySeason(shows []anilist.Show) map[string][]anilist.Show {
+	m := map[string][]anilist.Show{
+		"WINTER": {},
+		"SPRING": {},
+		"SUMMER": {},
+		"FALL":   {},
+		"UNKNOWN": {},
 	}
-
-	if cfg.AniList.WinterOverflow && season == "WINTER" {
-		shows = fetchWinterOverflow(ctx, client, year, cfg.AniList.MaxPerSeason, formats, shows)
+	for _, sh := range shows {
+		code := sh.SeasonCode()
+		m[code] = append(m[code], sh)
 	}
-
-	if season == "WINTER" {
-		shows = filterWinterMonth(shows, "winter shows")
-	}
-
-	slog.Info("fetched shows from AniList",
-		"season", season, "year", year, "count", len(shows))
-
-	seasonSeries, seasonNew := splitSeriesNew(shows)
-
-	seasonSeries = filter.Filter(seasonSeries, filter.Config{
-		Blacklist:   cfg.Blacklist,
-		ExcludeTags: cfg.AniList.ExcludeTags,
-	})
-	seasonSeries = filter.FilterFuture(seasonSeries, aheadMonths)
-
-	seasonNew = filter.Filter(seasonNew, filter.Config{
-		Blacklist:   cfg.Blacklist,
-		ExcludeTags: cfg.AniList.ExcludeTags,
-	})
-	seasonNew = filter.FilterFuture(seasonNew, aheadMonths)
-
-	return seasonSeries, seasonNew, nil
+	return m
 }
 
-func fetchWinterOverflow(ctx context.Context, client *anilist.Client, year, maxPerSeason int, formats []string, shows []anilist.Show) []anilist.Show {
-	overflowYear := year - 1
-	overflow, err := client.FetchSeason(ctx, "WINTER", overflowYear, maxPerSeason, formats)
-	if err != nil {
-		slog.Warn("winter overflow fetch failed, continuing without overflow",
-			"year", overflowYear, "error", err)
-		return shows
-	}
-
-	if len(overflow) == 0 {
-		return shows
-	}
-
-	seen := make(map[int]bool, len(shows))
-	for _, sh := range shows {
+// filterDecember merges December-premiering shows from prior into allShows,
+// skipping any that already exist (by ID). Returns the number of shows added.
+func filterDecember(allShows *[]anilist.Show, prior []anilist.Show) int {
+	seen := make(map[int]bool, len(*allShows))
+	for _, sh := range *allShows {
 		seen[sh.ID] = true
 	}
-
 	var added int
-	for _, sh := range overflow {
-		if sh.StartDate.Month != nil && *sh.StartDate.Month == 12 && !seen[sh.ID] {
-			shows = append(shows, sh)
+	for _, sh := range prior {
+		if sh.IsDecemberStart() && !seen[sh.ID] {
+			*allShows = append(*allShows, sh)
 			seen[sh.ID] = true
 			added++
 		}
 	}
-
-	if added > 0 {
-		slog.Info("winter overflow merged",
-			"year", year, "overflow_year", overflowYear,
-			"added", added, "total", len(shows))
-	}
-
-	return shows
-}
-
-func fetchAndAppendNextWinter(ctx context.Context, client *anilist.Client, cfg *config.Config, lastYear int, formats []string, aheadMonths int, seriesShows, seriesNew map[string][]anilist.Show) {
-	nextWinter := lastYear + 1
-
-	slog.Info("all seasons enabled, also fetching next winter",
-		"season", "WINTER", "year", nextWinter)
-
-	shows, err := client.FetchSeason(ctx, "WINTER", nextWinter, cfg.AniList.MaxPerSeason, formats)
-	if err != nil {
-		slog.Warn("next winter fetch failed, continuing without it",
-			"year", nextWinter, "error", err)
-		return
-	}
-
-	if cfg.AniList.WinterOverflow && nextWinter >= time.Now().Year() {
-		shows = fetchWinterOverflow(ctx, client, nextWinter, cfg.AniList.MaxPerSeason, formats, shows)
-	}
-
-	shows = filterWinterMonth(shows, "next winter shows")
-
-	shows = filter.Filter(shows, filter.Config{
-		Blacklist:   cfg.Blacklist,
-		ExcludeTags: cfg.AniList.ExcludeTags,
-	})
-	shows = filter.FilterFuture(shows, aheadMonths)
-
-	var seasonSeries, seasonNew []anilist.Show
-	seasonSeries, seasonNew = splitSeriesNew(shows)
-
-	key := fmt.Sprintf("WINTER-%d", nextWinter)
-	seriesShows[key] = seasonSeries
-	seriesNew[key] = seasonNew
+	return added
 }
 
 func resolveBatch(resolver *mapping.Resolver, all map[string][]anilist.Show, dryRun bool) map[string][]output.Show {

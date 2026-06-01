@@ -94,6 +94,80 @@ func TestResolveBatch(t *testing.T) {
 	})
 }
 
+func TestGroupBySeason(t *testing.T) {
+	t.Parallel()
+
+	winter := anilist.Show{ID: 1, Season: makePtr("WINTER")}
+	spring := anilist.Show{ID: 2, Season: makePtr("SPRING")}
+	summer := anilist.Show{ID: 3, Season: makePtr("SUMMER")}
+	fall := anilist.Show{ID: 4, Season: makePtr("FALL")}
+	unknown := anilist.Show{ID: 5, Season: nil}
+	lower := anilist.Show{ID: 6, Season: makePtr("winter")}
+
+	result := groupBySeason([]anilist.Show{winter, spring, summer, fall, unknown, lower})
+
+	if len(result["WINTER"]) != 2 {
+		t.Errorf("expected 2 WINTER shows, got %d", len(result["WINTER"]))
+	}
+	if len(result["SPRING"]) != 1 {
+		t.Errorf("expected 1 SPRING show, got %d", len(result["SPRING"]))
+	}
+	if len(result["SUMMER"]) != 1 {
+		t.Errorf("expected 1 SUMMER show, got %d", len(result["SUMMER"]))
+	}
+	if len(result["FALL"]) != 1 {
+		t.Errorf("expected 1 FALL show, got %d", len(result["FALL"]))
+	}
+	if len(result["UNKNOWN"]) != 1 {
+		t.Errorf("expected 1 UNKNOWN show, got %d", len(result["UNKNOWN"]))
+	}
+
+	// ID 6 (lowercase "winter") should be in WINTER via SeasonCode()
+	found := false
+	for _, s := range result["WINTER"] {
+		if s.ID == 6 {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("expected lowercase winter show in WINTER bucket")
+	}
+}
+
+func TestFilterDecember(t *testing.T) {
+	t.Parallel()
+
+	dec := anilist.Show{ID: 1, StartDate: anilist.FuzzyDate{Month: makePtr(12)}}
+	jan := anilist.Show{ID: 2, StartDate: anilist.FuzzyDate{Month: makePtr(1)}}
+	nilMonth := anilist.Show{ID: 3, StartDate: anilist.FuzzyDate{Month: nil}}
+
+	all := []anilist.Show{{ID: 10}}
+	added := filterDecember(&all, []anilist.Show{dec, jan, nilMonth})
+
+	if added != 1 {
+		t.Errorf("expected 1 added (December), got %d", added)
+	}
+	if len(all) != 2 {
+		t.Errorf("expected 2 shows total, got %d", len(all))
+	}
+	if all[1].ID != 1 {
+		t.Errorf("expected added show to have ID 1, got %d", all[1].ID)
+	}
+}
+
+func TestFilterDecember_Deduplicates(t *testing.T) {
+	t.Parallel()
+
+	dec := anilist.Show{ID: 1, StartDate: anilist.FuzzyDate{Month: makePtr(12)}}
+	all := []anilist.Show{dec}
+	added := filterDecember(&all, []anilist.Show{dec})
+
+	if added != 0 {
+		t.Errorf("expected 0 added (already present), got %d", added)
+	}
+}
+
 func makePtr[T any](v T) *T {
 	return &v
 }
