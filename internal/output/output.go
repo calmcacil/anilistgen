@@ -4,6 +4,7 @@ import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
+	"html/template"
 	"os"
 	"path/filepath"
 	"sort"
@@ -111,10 +112,29 @@ func WriteIndex(dir, baseURL string, years []int) error {
 		yearOpts += fmt.Sprintf("      <option value=\"%d\"%s>%d</option>\n", y, sel, y)
 	}
 
-	html := indexTemplate
-	html = strings.ReplaceAll(html, "{{BASE_URL}}", baseURL)
-	html = strings.ReplaceAll(html, "{{YEAR_OPTIONS}}", yearOpts)
+	tmpl, err := template.New("index").Parse(indexTemplate)
+	if err != nil {
+		return fmt.Errorf("parse index template: %w", err)
+	}
+
+	type tmplData struct {
+		BaseURL     string
+		YearOptions template.HTML
+	}
 
 	indexPath := filepath.Join(dir, "index.html")
-	return os.WriteFile(indexPath, []byte(html), 0644)
+	f, err := os.Create(indexPath)
+	if err != nil {
+		return fmt.Errorf("create index.html: %w", err)
+	}
+	defer f.Close()
+
+	if err := tmpl.Execute(f, tmplData{
+		BaseURL:     baseURL,
+		YearOptions: template.HTML(yearOpts),
+	}); err != nil {
+		return fmt.Errorf("render index template: %w", err)
+	}
+
+	return nil
 }
