@@ -5,12 +5,13 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/calmcacil/anilistgen/internal/anilist"
 	"github.com/calmcacil/anilistgen/internal/mapping"
+	"github.com/calmcacil/anilistgen/internal/model"
+	"github.com/calmcacil/anilistgen/internal/output"
+	"github.com/calmcacil/anilistgen/internal/pipeline"
 )
 
-func TestResolveBatch(t *testing.T) {
-	// Create a test CommunityMapping via temp YAML file
+func TestProcessBatch(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "tvdb-mal.yaml")
 	content := `AnimeMap:
@@ -29,49 +30,38 @@ func TestResolveBatch(t *testing.T) {
 	}
 	resolver := mapping.NewResolver(cm)
 
-	// Test with empty map - dry run
-	result := resolveBatch(resolver, map[string][]anilist.Show{}, true)
+	winter2026 := model.SeasonKey{Season: "WINTER", Year: 2026}
+
+	result := pipeline.ProcessBatch(resolver, map[model.SeasonKey][]model.Show{}, true)
 	if len(result) != 0 {
 		t.Errorf("expected empty result for dry-run, got %d entries", len(result))
 	}
 
-	// Test with empty map - non-dry run
-	result = resolveBatch(resolver, map[string][]anilist.Show{}, false)
+	result = pipeline.ProcessBatch(resolver, map[model.SeasonKey][]model.Show{}, false)
 	if len(result) != 0 {
 		t.Errorf("expected empty result for empty input, got %d entries", len(result))
 	}
 
-	// Test with invalid key format
-	result = resolveBatch(resolver, map[string][]anilist.Show{
-		"invalid-key": nil,
+	result = pipeline.ProcessBatch(resolver, map[model.SeasonKey][]model.Show{
+		winter2026: nil,
 	}, false)
-	if len(result) != 0 {
-		t.Errorf("expected empty result for invalid key, got %d entries", len(result))
-	}
-
-	// Test with valid key but nil shows (should produce empty output slice)
-	result = resolveBatch(resolver, map[string][]anilist.Show{
-		"WINTER-2026": nil,
-	}, false)
-	if shows, ok := result["WINTER-2026"]; !ok {
+	if shows, ok := result[winter2026]; !ok {
 		t.Error("expected WINTER-2026 key in result")
 	} else if len(shows) != 0 {
 		t.Errorf("expected 0 shows for nil input, got %d", len(shows))
 	}
 
-	// Test resolution with unresolvable show (IDMal not in mapping)
-	result = resolveBatch(resolver, map[string][]anilist.Show{
-		"WINTER-2026": {{ID: 1, IDMal: nil}},
+	result = pipeline.ProcessBatch(resolver, map[model.SeasonKey][]model.Show{
+		winter2026: {{ID: 1, IDMal: nil}},
 	}, false)
-	if shows, ok := result["WINTER-2026"]; ok && len(shows) != 0 {
+	if shows, ok := result[winter2026]; ok && len(shows) != 0 {
 		t.Errorf("expected 0 resolved shows for no IDMal, got %d", len(shows))
 	}
 
-	// Test resolution with resolvable show
-	result = resolveBatch(resolver, map[string][]anilist.Show{
-		"WINTER-2026": {{ID: 1, IDMal: makePtr(16498)}},
+	result = pipeline.ProcessBatch(resolver, map[model.SeasonKey][]model.Show{
+		winter2026: {{ID: 1, IDMal: makePtr(16498)}},
 	}, false)
-	if shows, ok := result["WINTER-2026"]; !ok {
+	if shows, ok := result[winter2026]; !ok {
 		t.Error("expected WINTER-2026 key")
 	} else if len(shows) != 1 {
 		t.Errorf("expected 1 resolved show, got %d", len(shows))
@@ -79,14 +69,13 @@ func TestResolveBatch(t *testing.T) {
 		t.Errorf("expected TVDB 12345, got %d", shows[0].TVDBID)
 	}
 
-	// Test dry-run output (captures stdout, just verify no panic and correct output)
 	t.Run("dry-run output format", func(t *testing.T) {
-		shows := []anilist.Show{
-			{ID: 1, IDMal: makePtr(16498), Title: anilist.Title{English: makePtr("Test Show")}},
+		shows := []model.Show{
+			{ID: 1, IDMal: makePtr(16498), Title: model.Title{English: makePtr("Test Show")}},
 			{ID: 2, IDMal: nil},
 		}
-		result := resolveBatch(resolver, map[string][]anilist.Show{
-			"WINTER-2026": shows,
+		result := pipeline.ProcessBatch(resolver, map[model.SeasonKey][]model.Show{
+			winter2026: shows,
 		}, true)
 		if len(result) != 0 {
 			t.Error("expected empty result for dry run output")
@@ -94,17 +83,25 @@ func TestResolveBatch(t *testing.T) {
 	})
 }
 
+func TestPrintDryRun(t *testing.T) {
+	winter2026 := model.SeasonKey{Season: "WINTER", Year: 2026}
+	data := map[model.SeasonKey][]output.Show{
+		winter2026: {{TVDBID: 12345, Title: "Test Show"}},
+	}
+	printDryRun(data, "series")
+}
+
 func TestGroupBySeason(t *testing.T) {
 	t.Parallel()
 
-	winter := anilist.Show{ID: 1, Season: makePtr("WINTER")}
-	spring := anilist.Show{ID: 2, Season: makePtr("SPRING")}
-	summer := anilist.Show{ID: 3, Season: makePtr("SUMMER")}
-	fall := anilist.Show{ID: 4, Season: makePtr("FALL")}
-	unknown := anilist.Show{ID: 5, Season: nil}
-	lower := anilist.Show{ID: 6, Season: makePtr("winter")}
+	winter := model.Show{ID: 1, Season: makePtr("WINTER")}
+	spring := model.Show{ID: 2, Season: makePtr("SPRING")}
+	summer := model.Show{ID: 3, Season: makePtr("SUMMER")}
+	fall := model.Show{ID: 4, Season: makePtr("FALL")}
+	unknown := model.Show{ID: 5, Season: nil}
+	lower := model.Show{ID: 6, Season: makePtr("winter")}
 
-	result := groupBySeason([]anilist.Show{winter, spring, summer, fall, unknown, lower})
+	result := groupBySeason([]model.Show{winter, spring, summer, fall, unknown, lower})
 
 	if len(result["WINTER"]) != 2 {
 		t.Errorf("expected 2 WINTER shows, got %d", len(result["WINTER"]))
@@ -122,7 +119,6 @@ func TestGroupBySeason(t *testing.T) {
 		t.Errorf("expected 1 UNKNOWN show, got %d", len(result["UNKNOWN"]))
 	}
 
-	// ID 6 (lowercase "winter") should be in WINTER via SeasonCode()
 	found := false
 	for _, s := range result["WINTER"] {
 		if s.ID == 6 {
@@ -138,12 +134,12 @@ func TestGroupBySeason(t *testing.T) {
 func TestFilterDecember(t *testing.T) {
 	t.Parallel()
 
-	dec := anilist.Show{ID: 1, StartDate: anilist.FuzzyDate{Month: makePtr(12)}}
-	jan := anilist.Show{ID: 2, StartDate: anilist.FuzzyDate{Month: makePtr(1)}}
-	nilMonth := anilist.Show{ID: 3, StartDate: anilist.FuzzyDate{Month: nil}}
+	dec := model.Show{ID: 1, StartDate: model.FuzzyDate{Month: makePtr(12)}}
+	jan := model.Show{ID: 2, StartDate: model.FuzzyDate{Month: makePtr(1)}}
+	nilMonth := model.Show{ID: 3, StartDate: model.FuzzyDate{Month: nil}}
 
-	all := []anilist.Show{{ID: 10}}
-	added := filterDecember(&all, []anilist.Show{dec, jan, nilMonth})
+	all := []model.Show{{ID: 10}}
+	added := filterDecember(&all, []model.Show{dec, jan, nilMonth})
 
 	if added != 1 {
 		t.Errorf("expected 1 added (December), got %d", added)
@@ -159,9 +155,9 @@ func TestFilterDecember(t *testing.T) {
 func TestFilterDecember_Deduplicates(t *testing.T) {
 	t.Parallel()
 
-	dec := anilist.Show{ID: 1, StartDate: anilist.FuzzyDate{Month: makePtr(12)}}
-	all := []anilist.Show{dec}
-	added := filterDecember(&all, []anilist.Show{dec})
+	dec := model.Show{ID: 1, StartDate: model.FuzzyDate{Month: makePtr(12)}}
+	all := []model.Show{dec}
+	added := filterDecember(&all, []model.Show{dec})
 
 	if added != 0 {
 		t.Errorf("expected 0 added (already present), got %d", added)

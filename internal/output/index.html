@@ -111,7 +111,7 @@
 
   <div class="controls">
     <select id="yearSel">
-{{YEAR_OPTIONS}}    </select>
+{{.YearOptions}}    </select>
   </div>
 
   <div class="section-label">By Season</div>
@@ -124,7 +124,7 @@
 <div class="toast" id="toast"></div>
 
 <script>
-var base = '{{BASE_URL}}';
+var base = '{{.BaseURL}}';
 var yearSel = document.getElementById('yearSel');
 var seasonGrid = document.getElementById('seasonGrid');
 var yearGrid = document.getElementById('yearGrid');

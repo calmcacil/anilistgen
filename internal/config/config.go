@@ -12,13 +12,14 @@ import (
 )
 
 type Config struct {
-	AniList              AniListConfig  `yaml:"anilist"`
-	Blacklist            []string       `yaml:"blacklist"`
-	OutputDir            string         `yaml:"output_dir"`
-	BaseURL              string         `yaml:"base_url"`
-	CommunityMappingPath string         `yaml:"community_mapping_path"`
-	Logging              LoggingConfig  `yaml:"logging"`
-	IndexYears           []int          `yaml:"index_years"`
+	AniList                    AniListConfig `yaml:"anilist"`
+	Blacklist                  []string      `yaml:"blacklist"`
+	OutputDir                  string        `yaml:"output_dir"`
+	BaseURL                    string        `yaml:"base_url"`
+	CommunityMappingPath       string        `yaml:"community_mapping_path"`
+	CommunityMappingMaxAge     string        `yaml:"community_mapping_max_age"`
+	Logging                    LoggingConfig `yaml:"logging"`
+	IndexYears                 []int         `yaml:"index_years"`
 }
 
 type AniListConfig struct {
@@ -267,6 +268,10 @@ func (c *Config) applyEnvOverrides() {
 		c.CommunityMappingPath = v
 	}
 
+	if v := os.Getenv(envPrefix + "COMMUNITY_MAPPING_MAX_AGE"); v != "" {
+		c.CommunityMappingMaxAge = v
+	}
+
 	if v := os.Getenv(envPrefix + "LOG_LEVEL"); v != "" {
 		c.Logging.Level = v
 	}
@@ -319,6 +324,7 @@ func loadFile(path string) (*Config, error) {
 		"base_url":               true,
 		"index_years":            true,
 		"community_mapping_path": true,
+		"community_mapping_max_age": true,
 		"logging":                true,
 	}
 	var raw map[string]any

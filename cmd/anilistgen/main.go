@@ -8,9 +8,6 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
-	"slices"
-	"strconv"
-	"strings"
 	"syscall"
 	"time"
 
@@ -19,12 +16,11 @@ import (
 	"github.com/calmcacil/anilistgen/internal/filter"
 	"github.com/calmcacil/anilistgen/internal/logging"
 	"github.com/calmcacil/anilistgen/internal/mapping"
+	"github.com/calmcacil/anilistgen/internal/model"
 	"github.com/calmcacil/anilistgen/internal/output"
+	"github.com/calmcacil/anilistgen/internal/pipeline"
 )
 
-// version is set at build time via -ldflags, e.g.:
-//
-//	go build -ldflags="-X main.version=$(git describe --tags)" ./cmd/anilistgen
 var version = "dev"
 
 func main() {
@@ -184,13 +180,13 @@ func runGenerate(configPath string, dryRun bool, outputDir string, verbose bool)
 		outputDir = cfg.OutputDir
 	}
 
-	cm, err := mapping.LoadCommunityMapping(cfg.CommunityMappingPath)
+	cm, err := loadMapping(cfg)
 	if err != nil {
 		return fmt.Errorf("load community mapping: %w", err)
 	}
 
-	aniClient := anilist.New()
 	resolver := mapping.NewResolver(cm)
+	aniClient := anilist.New()
 
 	formats := []string{"TV"}
 	if cfg.AniList.IncludeONA {
@@ -211,105 +207,78 @@ func runGenerate(configPath string, dryRun bool, outputDir string, verbose bool)
 		}
 	}()
 
-	aheadMonths := cfg.AniList.AheadMonthsOrDefault()
-	years := cfg.AniList.YearsOrDefault()
-	seasons := cfg.AniList.Season()
-
-	seriesShows := map[string][]anilist.Show{}
-	seriesNew := map[string][]anilist.Show{}
-
-	hasWinter := slices.Contains(seasons, "WINTER")
-	winterOverflow := cfg.AniList.WinterOverflow
-
-	for _, year := range years {
-		slog.Info("fetching year", "year", year)
-		allShows, err := aniClient.FetchYear(ctx, year, cfg.AniList.MaxPerYear, formats)
-		if err != nil {
-			slog.Error("fetch year failed", "year", year, "error", err)
-			continue
-		}
-		slog.Info("fetched shows from AniList", "year", year, "count", len(allShows))
-
-		// Winter overflow: merge December-premiering shows from the previous year.
-		if hasWinter && winterOverflow {
-			priorYear := year - 1
-			needsFetch := !slices.Contains(years, priorYear)
-			if needsFetch {
-				prior, err := aniClient.FetchYear(ctx, priorYear, cfg.AniList.MaxPerYear, formats)
-				if err != nil {
-					slog.Warn("prior year fetch failed for winter overflow",
-						"year", priorYear, "error", err)
-				} else {
-					added := filterDecember(&allShows, prior)
-					if added > 0 {
-						slog.Info("winter overflow merged",
-							"year", year, "overflow_year", priorYear,
-							"added", added)
-					}
-				}
-			}
-		}
-
-		bySeason := groupBySeason(allShows)
-
-		for _, season := range seasons {
-			seasonShows := bySeason[season]
-			if season == "WINTER" {
-				seasonShows = filterWinterMonth(seasonShows, "winter shows")
-			}
-
-			seasonShows = filter.Filter(seasonShows, filter.Config{
-				Blacklist:   cfg.Blacklist,
-				ExcludeTags: cfg.AniList.ExcludeTags,
-			})
-			seasonShows = filter.FilterFuture(seasonShows, aheadMonths)
-
-			seasonSeries, seasonNew := splitSeriesNew(seasonShows)
-
-			key := fmt.Sprintf("%s-%d", season, year)
-			seriesShows[key] = seasonSeries
-			seriesNew[key] = seasonNew
-		}
+	deps := pipeline.Deps{
+		AniClient:      aniClient,
+		Resolver:       resolver,
+		FilterConfig: filter.Config{
+			Blacklist:   cfg.Blacklist,
+			ExcludeTags: cfg.AniList.ExcludeTags,
+		},
+		WinterOverflow: cfg.AniList.WinterOverflow,
+		MaxPerYear:     cfg.AniList.MaxPerYear,
+		AheadMonths:    cfg.AniList.AheadMonthsOrDefault(),
+		Formats:        formats,
 	}
 
-	type catResult struct {
-		label string
-		data  map[string][]output.Show
-	}
-	results := []catResult{
-		{label: "series", data: resolveBatch(resolver, seriesShows, dryRun)},
-		{label: "series-new", data: resolveBatch(resolver, seriesNew, dryRun)},
-	}
+	seriesAll, seriesNew, stats, errs := pipeline.Run(ctx, deps, cfg.AniList.YearsOrDefault(), cfg.AniList.Season())
+
+	expectedSeasons := len(cfg.AniList.YearsOrDefault()) * len(cfg.AniList.Season())
 
 	if dryRun {
+		printDryRun(seriesAll, "series")
+		printDryRun(seriesNew, "series-new")
 		return nil
 	}
 
-	for _, r := range results {
-		if err := output.WriteAllJSON(outputDir, cfg.BaseURL, r.label, r.data, cfg.IndexYears); err != nil {
-			return fmt.Errorf("write %s JSON: %w", r.label, err)
+	for _, s := range stats {
+		slog.Info("season stats",
+			"season", s.Season, "year", s.Year,
+			"fetched", s.Fetched, "resolved", s.Resolved, "unmatched", s.Unmatched)
+	}
+
+	if len(errs) > 0 {
+		for _, e := range errs {
+			slog.Warn("pipeline error", "error", e)
+		}
+		if len(errs) == expectedSeasons {
+			return fmt.Errorf("all %d seasons failed", len(errs))
 		}
 	}
 
+	if err := output.WriteAllJSON(outputDir, cfg.BaseURL, "series", seriesAll, cfg.IndexYears); err != nil {
+		return fmt.Errorf("write series JSON: %w", err)
+	}
+	if err := output.WriteAllJSON(outputDir, cfg.BaseURL, "series-new", seriesNew, cfg.IndexYears); err != nil {
+		return fmt.Errorf("write series-new JSON: %w", err)
+	}
+
 	var total int
-	for _, r := range results {
-		for _, shows := range r.data {
-			total += len(shows)
-		}
+	for _, shows := range seriesAll {
+		total += len(shows)
+	}
+	for _, shows := range seriesNew {
+		total += len(shows)
 	}
 	slog.Info("output written", "dir", outputDir, "total_resolved", total)
 
 	return nil
 }
 
-// groupBySeason splits a slice of shows by their AniList season field.
-// Unknown/missing seasons are placed under "UNKNOWN".
-func groupBySeason(shows []anilist.Show) map[string][]anilist.Show {
-	m := map[string][]anilist.Show{
-		"WINTER": {},
-		"SPRING": {},
-		"SUMMER": {},
-		"FALL":   {},
+func printDryRun(data map[model.SeasonKey][]output.Show, label string) {
+	for key, shows := range data {
+		fmt.Printf("\n[%s] %s %d — %d shows\n", label, key.Season, key.Year, len(shows))
+		for _, s := range shows {
+			fmt.Printf("  TVDB %d — %s\n", s.TVDBID, s.Title)
+		}
+	}
+}
+
+func groupBySeason(shows []model.Show) map[string][]model.Show {
+	m := map[string][]model.Show{
+		"WINTER":  {},
+		"SPRING":  {},
+		"SUMMER":  {},
+		"FALL":    {},
 		"UNKNOWN": {},
 	}
 	for _, sh := range shows {
@@ -319,9 +288,7 @@ func groupBySeason(shows []anilist.Show) map[string][]anilist.Show {
 	return m
 }
 
-// filterDecember merges December-premiering shows from prior into allShows,
-// skipping any that already exist (by ID). Returns the number of shows added.
-func filterDecember(allShows *[]anilist.Show, prior []anilist.Show) int {
+func filterDecember(allShows *[]model.Show, prior []model.Show) int {
 	seen := make(map[int]bool, len(*allShows))
 	for _, sh := range *allShows {
 		seen[sh.ID] = true
@@ -337,48 +304,6 @@ func filterDecember(allShows *[]anilist.Show, prior []anilist.Show) int {
 	return added
 }
 
-func resolveBatch(resolver *mapping.Resolver, all map[string][]anilist.Show, dryRun bool) map[string][]output.Show {
-	out := map[string][]output.Show{}
-	for key, shows := range all {
-		parts := strings.SplitN(key, "-", 2)
-		season := parts[0]
-		var year int
-		if y, err := strconv.Atoi(parts[1]); err == nil {
-			year = y
-		} else {
-			slog.Error("invalid season key", "key", key)
-			continue
-		}
-
-		rs := resolver.ResolveBatch(shows)
-
-		var resolved []output.Show
-		var unmatched int
-		for _, show := range shows {
-			if r, ok := rs[show.ID]; ok && r.Resolved {
-				resolved = append(resolved, output.Show{
-					TVDBID: r.TVDBID,
-					Title:  r.Title,
-				})
-			} else {
-				unmatched++
-			}
-		}
-
-		if dryRun {
-			fmt.Printf("\n[%s %d] %d shows (%d resolved, %d unmatched)\n",
-				season, year, len(shows), len(resolved), unmatched)
-			for _, s := range resolved {
-				fmt.Printf("  TVDB %d — %s\n", s.TVDBID, s.Title)
-			}
-			continue
-		}
-
-		out[key] = resolved
-	}
-	return out
-}
-
 func setupLogging(cfg *config.Config, verbose bool) (func(), error) {
 	level := cfg.Logging.Level
 	if verbose {
@@ -387,36 +312,13 @@ func setupLogging(cfg *config.Config, verbose bool) (func(), error) {
 	return logging.Setup(level, cfg.Logging.File)
 }
 
-func filterWinterMonth(shows []anilist.Show, label string) []anilist.Show {
-	var filtered []anilist.Show
-	for _, sh := range shows {
-		if sh.IsWinterStart() {
-			filtered = append(filtered, sh)
-		} else {
-			slog.Debug("skipped winter show outside season range",
-				"title", sh.DisplayTitle(),
-				"month", sh.StartDate.Month)
+func loadMapping(cfg *config.Config) (*mapping.CommunityMapping, error) {
+	if cfg.CommunityMappingMaxAge != "" {
+		maxAge, err := time.ParseDuration(cfg.CommunityMappingMaxAge)
+		if err != nil {
+			return nil, fmt.Errorf("parse community_mapping_max_age %q: %w", cfg.CommunityMappingMaxAge, err)
 		}
+		return mapping.LoadCommunityMappingWithAge(cfg.CommunityMappingPath, maxAge)
 	}
-	if len(filtered) != len(shows) {
-		slog.Info("filtered "+label+" by start month",
-			"total", len(shows),
-			"kept", len(filtered),
-			"removed", len(shows)-len(filtered))
-	}
-	return filtered
-}
-
-func splitSeriesNew(shows []anilist.Show) (series, seasonNew []anilist.Show) {
-	series = make([]anilist.Show, 0)
-	seasonNew = make([]anilist.Show, 0)
-	for _, sh := range shows {
-		if sh.IsSeries() {
-			series = append(series, sh)
-			if sh.IsNew() {
-				seasonNew = append(seasonNew, sh)
-			}
-		}
-	}
-	return
+	return mapping.LoadCommunityMapping(cfg.CommunityMappingPath)
 }
