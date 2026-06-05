@@ -37,7 +37,7 @@ AniList API
     │         • Start date > N months ahead
     ▼
   Resolve — map each show to a TVDB ID:
-    │         Community mapping YAML (MAL ID → TVDB)
+    │         Anibridge mapping (MAL/AniList → TVDB)
     │
     ▼
   Output — write compact JSON:
@@ -47,21 +47,52 @@ AniList API
 
 ## Data source
 
-**[shinkro/community-mapping](https://github.com/shinkro/community-mapping)**
-(`tvdb-mal.yaml`, ~947KB, ~5,241 entries).
+**[anibridge/anibridge-mappings](https://github.com/anibridge/anibridge-mappings)**
+(`mappings.json.zst`, ~1.6 MB compressed).
 
-Maps MAL IDs directly to TVDB IDs. Downloaded on first run and cached
-locally. Covers ~78% of seasonal anime.
+A cross-provider anime ID dataset with episode-level granularity covering
+8 providers (AniDB, AniList, MAL, TMDB, TVDB, IMDB). Downloaded on first
+run and cached locally. From the frozen id-graph anilistgen extracts:
+
+- **~8,900** MAL → TVDB season-1 mappings
+- **~9,100** AniList → TVDB season-1 mappings
+
+Combined, these cover **~98%** of seasonal anime (up from ~78% with the
+previous source).
 
 ### Resolution
 
 ```
-Show from AniList → MAL ID → Community mapping → TVDB? → Done
-
-Not matched → silently skipped (not yet in TVDB)
+Show from AniList → MAL ID → Anibridge → TVDB? → Done
+                      └→ AniList ID → (if no MAL or MAL not in mapping)
 ```
 
 No external API calls during resolution — the mapping file is local.
+
+### Known gap
+
+The anibridge dataset is built daily from multiple upstream sources but
+may lag behind very recent MAL entries for upcoming-season shows. During
+the migration from the previous source (shinkro/community-mapping),
+7 shows (all upcoming 2026 summer) were identified as having MAL→TVDB
+links in the old source but not yet in anibridge:
+
+| MAL | TVDB | Title |
+|---|---|---|
+| 61483 | 462561 | Tenmaku no Jaadugar |
+| 62430 | 467841 | BanG Dream! Yume∞Mita |
+| 62535 | 468399 | Hanaori-san Still Wants to Fight in the Next Life |
+| 62876 | 470406 | Rich Girl Caretaker |
+| 63537 | 474490 | "Kimi wo Aisuru Ki wa nai" |
+| 63752 | 475631 | The Forsaken Saintess |
+| 63802 | 475980 | Mobius Dust |
+
+These should be verified before their season starts (summer 2026 airing)
+by running `go test ./...` and checking that `unmatched` count for
+summer 2026 is no longer elevated. If the anibridge dataset still lacks
+these by airing time, consider re-adding the previous shinkro source as a
+fallback layer beneath anibridge (the old `community_mapping_path` config
+key and loader are preserved in git history).
 
 ## Winter overflow
 
@@ -93,8 +124,8 @@ cosmetic.
 
 ## Key design decisions
 
-- **No MDBList** — v2 replaces the MDBList API with a local community
-  mapping file. No API keys, no rate limits, no external service dependencies.
+- **No MDBList** — anilistgen uses a local cross-provider mapping file.
+  No API keys, no rate limits, no external service dependencies.
 
 - **Static files only** — Output is JSON on GitHub Pages. No server needed.
   Sonarr imports directly from the URL.
@@ -113,5 +144,5 @@ cosmetic.
 - **Paginated fetching** — AniList caps responses at 50 per page. The
   client follows `hasNextPage` to collect up to `max_per_year` results.
 
-- **Auto-downloaded mapping** — The community mapping file downloads on
+- **Auto-downloaded mapping** — The anibridge mapping file downloads on
   first run and caches locally. No manual setup needed.

@@ -28,7 +28,7 @@ output_dir: ./sonarr-lists
 
 base_url: https://lists.calmcacil.dev
 
-community_mapping_path: /tmp/anilistgen_tvdb.yaml   # auto-downloaded
+anibridge_mapping_path: /tmp/anilistgen_anibridge.json.zst   # auto-downloaded, zstd-compressed
 
 logging:
   level: info
@@ -79,14 +79,22 @@ text.
 
 Directory where JSON files are written.
 
-### `community_mapping_path`
+### `anibridge_mapping_path`
 
 | Type | Default |
 |---|---|
-| `string` | `/tmp/anilistgen_tvdb.yaml` |
+| `string` | `/tmp/anilistgen_anibridge.json.zst` |
 
-Path to the shinkro/community-mapping YAML file (MAL ID → TVDB ID).
+Path to the anibridge mapping file (zstd-compressed JSON, MAL + AniList → TVDB).
 Auto-downloaded if the file doesn't exist.
+
+### `anibridge_mapping_max_age`
+
+| Type | Default | Example |
+|---|---|---|
+| `string` | `""` (always remote) | `72h` |
+
+Max age of the cached mapping before it is re-downloaded.
 
 ### `base_url`
 
@@ -123,7 +131,8 @@ prefix — useful for Docker, CI/CD, or when no config file is present.
 | `ALG_BLACKLIST` | `blacklist` | `""` |
 | `ALG_OUTPUT_DIR` | `output_dir` | `./sonarr-lists` |
 | `ALG_BASE_URL` | `base_url` | `https://lists.calmcacil.dev` |
-| `ALG_COMMUNITY_MAPPING_PATH` | `community_mapping_path` | `/tmp/anilistgen_tvdb.yaml` |
+| `ALG_ANIBRIDGE_MAPPING_PATH` | `anibridge_mapping_path` | `/tmp/anilistgen_anibridge.json.zst` |
+| `ALG_ANIBRIDGE_MAPPING_MAX_AGE` | `anibridge_mapping_max_age` | `""` |
 | `ALG_LOG_LEVEL` | `logging.level` | `info` |
 | `ALG_LOG_FILE` | `logging.file` | `""` |
 

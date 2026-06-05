@@ -8,18 +8,19 @@ import (
 	"strings"
 	"time"
 
+	"github.com/calmcacil/anilistgen/internal/mapping"
 	"gopkg.in/yaml.v3"
 )
 
 type Config struct {
-	AniList                    AniListConfig `yaml:"anilist"`
-	Blacklist                  []string      `yaml:"blacklist"`
-	OutputDir                  string        `yaml:"output_dir"`
-	BaseURL                    string        `yaml:"base_url"`
-	CommunityMappingPath       string        `yaml:"community_mapping_path"`
-	CommunityMappingMaxAge     string        `yaml:"community_mapping_max_age"`
-	Logging                    LoggingConfig `yaml:"logging"`
-	IndexYears                 []int         `yaml:"index_years"`
+	AniList               AniListConfig `yaml:"anilist"`
+	Blacklist             []string      `yaml:"blacklist"`
+	OutputDir             string        `yaml:"output_dir"`
+	BaseURL               string        `yaml:"base_url"`
+	AnibridgeMappingPath  string        `yaml:"anibridge_mapping_path"`
+	AnibridgeMappingMaxAge string       `yaml:"anibridge_mapping_max_age"`
+	Logging               LoggingConfig `yaml:"logging"`
+	IndexYears            []int         `yaml:"index_years"`
 }
 
 type AniListConfig struct {
@@ -39,9 +40,8 @@ type LoggingConfig struct {
 }
 
 const (
-	DefaultMaxPerYear  = 400
-	DefaultMappingPath = "/tmp/anilistgen_tvdb.yaml"
-	DefaultBaseURL     = "https://lists.calmcacil.dev"
+	DefaultMaxPerYear = 400
+	DefaultBaseURL    = "https://lists.calmcacil.dev"
 )
 
 // Season resolves the configured season strings to uppercase season codes.
@@ -109,8 +109,8 @@ func (c *Config) FillDefaults() {
 	if c.OutputDir == "" {
 		c.OutputDir = "./sonarr-lists"
 	}
-	if c.CommunityMappingPath == "" {
-		c.CommunityMappingPath = DefaultMappingPath
+	if c.AnibridgeMappingPath == "" {
+		c.AnibridgeMappingPath = mapping.DefaultAnibridgePath
 	}
 	if c.BaseURL == "" {
 		c.BaseURL = DefaultBaseURL
@@ -165,9 +165,9 @@ func DefaultConfig() *Config {
 			AheadMonths:    &v,
 			TimeoutMinutes: 10,
 		},
-		OutputDir:            "./sonarr-lists",
-		CommunityMappingPath: DefaultMappingPath,
-		BaseURL:              DefaultBaseURL,
+		OutputDir:             "./sonarr-lists",
+		AnibridgeMappingPath: mapping.DefaultAnibridgePath,
+		BaseURL:               DefaultBaseURL,
 		Logging: LoggingConfig{
 			Level: "info",
 			File:  "",
@@ -264,12 +264,12 @@ func (c *Config) applyEnvOverrides() {
 		}
 	}
 
-	if v := os.Getenv(envPrefix + "COMMUNITY_MAPPING_PATH"); v != "" {
-		c.CommunityMappingPath = v
+	if v := os.Getenv(envPrefix + "ANIBRIDGE_MAPPING_PATH"); v != "" {
+		c.AnibridgeMappingPath = v
 	}
 
-	if v := os.Getenv(envPrefix + "COMMUNITY_MAPPING_MAX_AGE"); v != "" {
-		c.CommunityMappingMaxAge = v
+	if v := os.Getenv(envPrefix + "ANIBRIDGE_MAPPING_MAX_AGE"); v != "" {
+		c.AnibridgeMappingMaxAge = v
 	}
 
 	if v := os.Getenv(envPrefix + "LOG_LEVEL"); v != "" {
@@ -318,14 +318,14 @@ func loadFile(path string) (*Config, error) {
 	}
 
 	knownKeys := map[string]bool{
-		"anilist":                true,
-		"blacklist":              true,
-		"output_dir":             true,
-		"base_url":               true,
-		"index_years":            true,
-		"community_mapping_path": true,
-		"community_mapping_max_age": true,
-		"logging":                true,
+		"anilist":                  true,
+		"blacklist":                true,
+		"output_dir":               true,
+		"base_url":                 true,
+		"index_years":              true,
+		"anibridge_mapping_path":   true,
+		"anibridge_mapping_max_age": true,
+		"logging":                  true,
 	}
 	var raw map[string]any
 	if err := yaml.Unmarshal(data, &raw); err != nil {
@@ -411,8 +411,8 @@ output_dir: ./sonarr-lists
 # Base URL for the generated index page (used for copy-to-clipboard URLs)
 base_url: https://lists.calmcacil.dev
 
-# Community mapping file path (auto-downloaded if missing)
-community_mapping_path: /tmp/anilistgen_tvdb.yaml
+# Anibridge mapping file path (auto-downloaded if missing). zstd-compressed JSON.
+anibridge_mapping_path: /tmp/anilistgen_anibridge.json.zst
 
 # Logging
 logging:
