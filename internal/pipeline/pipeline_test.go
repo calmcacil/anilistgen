@@ -56,8 +56,11 @@ func testDeps(baseURL string, resolver *mapping.Resolver) Deps {
 
 func testMapping(t *testing.T) *mapping.Resolver {
 	t.Helper()
-	cm := mapping.NewCommunityMapping(map[int]int{16498: 12345, 99999: 67890})
-	return mapping.NewResolver(cm)
+	am := mapping.NewAnibridgeMapping(
+		map[int]int{16498: 12345, 99999: 67890},
+		map[int]int{},
+	)
+	return mapping.NewResolver(am)
 }
 
 func TestProcess_OrdinarySeason(t *testing.T) {

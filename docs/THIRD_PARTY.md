@@ -11,11 +11,11 @@ and tools. Each is listed with its license and how it is used.
 - **Website:** https://anilist.co
 - **Terms:** https://docs.anilist.co/guide/terms-of-use
 
-### shinkro/community-mapping
+### anibridge/anibridge-mappings
 - **License:** MIT License
-- **Copyright:** Copyright (c) 2023 Rohit Vardam
-- **Usage:** TVDB ID resolution — auto-downloaded YAML mapping file
-- **Repository:** https://github.com/shinkro/community-mapping
+- **Copyright:** Copyright 2025-present anibridge contributors
+- **Usage:** TVDB ID resolution — auto-downloaded zstd-compressed JSON mapping file
+- **Repository:** https://github.com/anibridge/anibridge-mappings
 - **Attribution:** See [NOTICE](../NOTICE) at the project root.
 
 ## Go Dependencies
@@ -25,6 +25,12 @@ and tools. Each is listed with its license and how it is used.
 - **Copyright:** Copyright (c) 2011-2019 Canonical Ltd
 - **Usage:** YAML config and mapping file parsing
 - **Source:** https://github.com/go-yaml/yaml
+
+### github.com/klauspost/compress
+- **License:** BSD-3-Clause
+- **Copyright:** Copyright (c) 2016 Klaus Post
+- **Usage:** zstd decompression of anibridge mapping file
+- **Source:** https://github.com/klauspost/compress
 
 ## CI/CD Tools
 

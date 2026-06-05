@@ -22,7 +22,7 @@ go test ./...
 cmd/anilistgen/main.go    — fetch → filter → resolve → output
 internal/anilist/            — AniList GraphQL client (paginated, retry)
 internal/config/             — YAML config, env var overrides
-internal/mapping/            — TVDB resolution via community mapping
+internal/mapping/            — TVDB resolution via anibridge mapping
 internal/filter/             — duration, blacklist, tags, future-date filter
 internal/output/             — compact JSON (per-season + yearly)
 internal/logging/            — slog setup
@@ -31,9 +31,9 @@ internal/logging/            — slog setup
 ## Key facts
 
 - AniList API caps `perPage` at 50. The client paginates via `hasNextPage`.
-- Mapping is local-only: community YAML (MAL ID → TVDB). No external API
-  calls during resolution.
-- Auto-downloads community mapping file on first run.
+- Mapping is local-only: anibridge zstd-compressed JSON (MAL + AniList → TVDB).
+  No external API calls during resolution.
+- Auto-downloads anibridge mapping file on first run (~1.6 MB).
 - JSON output is minified. Sonarr reads `tvdbId`; `title` is cosmetic.
 - Winter overflow fetches prior year's WINTER and merges December premieres.
 - Config via YAML file or `ALG_*` env vars.
@@ -51,4 +51,4 @@ startup.
 ## Stats
 
 - Sync time: ~5–8s (1–2 AniList API calls per year, ~8 pages)
-- Community mapping: ~5,241 entries (~78% coverage)
+- Anibridge mapping: ~8,900 MAL→TVDB + ~9,100 AniList→TVDB (~98% coverage)

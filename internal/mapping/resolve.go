@@ -8,31 +8,50 @@ import (
 )
 
 type Resolver struct {
-	community *CommunityMapping
+	source *AnibridgeMapping
 }
 
-func NewResolver(cm *CommunityMapping) *Resolver {
-	return &Resolver{community: cm}
+func NewResolver(am *AnibridgeMapping) *Resolver {
+	return &Resolver{source: am}
 }
 
 func (r *Resolver) Project(shows []model.Show) []output.Show {
 	var result []output.Show
 	for _, show := range shows {
-		malID := 0
-		if show.IDMal != nil {
-			malID = *show.IDMal
-		}
-		if malID <= 0 {
+		tvdbID, ok := r.lookup(show)
+		if !ok {
 			continue
 		}
-		if tvdbID, ok := r.community.Lookup(malID); ok {
-			slog.Debug("resolved via community mapping",
-				"title", show.DisplayTitle(), "mal", malID, "tvdb", tvdbID)
-			result = append(result, output.Show{
-				TVDBID: tvdbID,
-				Title:  show.DisplayTitle(),
-			})
-		}
+		slog.Debug("resolved via anibridge",
+			"title", show.DisplayTitle(),
+			"anilist", show.ID, "mal", deref(show.IDMal),
+			"tvdb", tvdbID)
+		result = append(result, output.Show{
+			TVDBID: tvdbID,
+			Title:  show.DisplayTitle(),
+		})
 	}
 	return result
+}
+
+func (r *Resolver) lookup(s model.Show) (int, bool) {
+	if s.IDMal != nil && *s.IDMal > 0 {
+		if id, ok := r.source.LookupByMAL(*s.IDMal); ok {
+			return id, true
+		}
+	}
+	if s.ID > 0 {
+		if id, ok := r.source.LookupByAniList(s.ID); ok {
+			return id, true
+		}
+	}
+	return 0, false
+}
+
+func deref[T any](p *T) T {
+	var zero T
+	if p != nil {
+		return *p
+	}
+	return zero
 }

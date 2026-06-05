@@ -180,12 +180,12 @@ func runGenerate(configPath string, dryRun bool, outputDir string, verbose bool)
 		outputDir = cfg.OutputDir
 	}
 
-	cm, err := loadMapping(cfg)
+	am, err := loadMapping(cfg)
 	if err != nil {
-		return fmt.Errorf("load community mapping: %w", err)
+		return fmt.Errorf("load anibridge mapping: %w", err)
 	}
 
-	resolver := mapping.NewResolver(cm)
+	resolver := mapping.NewResolver(am)
 	aniClient := anilist.New()
 
 	formats := []string{"TV"}
@@ -312,13 +312,13 @@ func setupLogging(cfg *config.Config, verbose bool) (func(), error) {
 	return logging.Setup(level, cfg.Logging.File)
 }
 
-func loadMapping(cfg *config.Config) (*mapping.CommunityMapping, error) {
-	if cfg.CommunityMappingMaxAge != "" {
-		maxAge, err := time.ParseDuration(cfg.CommunityMappingMaxAge)
+func loadMapping(cfg *config.Config) (*mapping.AnibridgeMapping, error) {
+	if cfg.AnibridgeMappingMaxAge != "" {
+		maxAge, err := time.ParseDuration(cfg.AnibridgeMappingMaxAge)
 		if err != nil {
-			return nil, fmt.Errorf("parse community_mapping_max_age %q: %w", cfg.CommunityMappingMaxAge, err)
+			return nil, fmt.Errorf("parse anibridge_mapping_max_age %q: %w", cfg.AnibridgeMappingMaxAge, err)
 		}
-		return mapping.LoadCommunityMappingWithAge(cfg.CommunityMappingPath, maxAge)
+		return mapping.LoadAnibridgeMappingWithAge(cfg.AnibridgeMappingPath, maxAge)
 	}
-	return mapping.LoadCommunityMapping(cfg.CommunityMappingPath)
+	return mapping.LoadAnibridgeMapping(cfg.AnibridgeMappingPath)
 }

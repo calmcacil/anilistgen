@@ -1,8 +1,6 @@
 package main
 
 import (
-	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/calmcacil/anilistgen/internal/mapping"
@@ -12,23 +10,11 @@ import (
 )
 
 func TestProcessBatch(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "tvdb-mal.yaml")
-	content := `AnimeMap:
-  - malid: 16498
-    tvdbid: 12345
-  - malid: 99999
-    tvdbid: 67890
-`
-	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	cm, err := mapping.LoadCommunityMapping(path)
-	if err != nil {
-		t.Fatalf("LoadCommunityMapping: %v", err)
-	}
-	resolver := mapping.NewResolver(cm)
+	am := mapping.NewAnibridgeMapping(
+		map[int]int{16498: 12345, 99999: 67890},
+		map[int]int{},
+	)
+	resolver := mapping.NewResolver(am)
 
 	winter2026 := model.SeasonKey{Season: "WINTER", Year: 2026}
 
